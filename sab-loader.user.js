@@ -14,6 +14,12 @@
 (async function() {
     'use strict';
 
+    if (window.__SAB_LOADER__) {
+        console.log("⛔ Loader already running");
+        return;
+    }
+    window.__SAB_LOADER__ = true;
+
     const scripts = [
         "https://raw.githubusercontent.com/abdallasabrisaleh1998-collab/SNB_TamperMonkey/main/Sab_Bank_Tools.js",
         "https://raw.githubusercontent.com/abdallasabrisaleh1998-collab/SNB_TamperMonkey/main/Sab_Collect_Reports_For_Sayad.js"
