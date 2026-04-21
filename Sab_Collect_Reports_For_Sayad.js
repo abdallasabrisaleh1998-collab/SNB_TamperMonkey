@@ -11,7 +11,12 @@
 
 (function() {
     'use strict';
-
+    if (window.__SAB_EXTRACTOR__) {
+        console.log("⛔ Extractor already running");
+        return;
+    }
+    window.__SAB_EXTRACTOR__ = true;
+    
     const SAB_COMPANY_NAMES = {
         "SASABB815515424001": "WEDAD SAB"
     };
