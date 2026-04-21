@@ -13,6 +13,12 @@
 (function() {
     'use strict';
 
+    if (window.__SAB_PANEL__) {
+    console.log("⛔ Panel already running");
+    return;
+    }
+    window.__SAB_PANEL__ = true;
+
     const SIDEBAR_ID = 'sab-helper-sidebar';
     let antiLogoutInterval = null;
 
@@ -269,8 +275,12 @@
 
     // تشغيل وبناء
     buildSidebar();
-    setInterval(() => {
-        if (!document.getElementById(SIDEBAR_ID)) buildSidebar();
-    }, 1000);
+    if (!window.__SAB_SIDEBAR_INTERVAL__) {
+        window.__SAB_SIDEBAR_INTERVAL__ = true;
+    
+        setInterval(() => {
+            if (!document.getElementById(SIDEBAR_ID)) buildSidebar();
+        }, 1000);
+    }
 
 })();
