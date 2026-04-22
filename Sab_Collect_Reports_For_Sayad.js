@@ -1,14 +1,4 @@
-// ==UserScript==
-// @name         SAB Transactions Extractor - Final Footer Fix
-// @namespace    http://tampermonkey.net/
-// @version      3.6
-// @description  Targeted footer button for closing modals in SAB
-// @author       Gemini
-// @match        https://sabicorp.sab.com/Corporate/apps/home*
-// @match        https://www.sabicorp.sab.com/Corporate/apps/home*
-// @grant        none
-// ==/UserScript==
-
+// SAB Transactions Extractor
 (function() {
     'use strict';
     if (window.__SAB_EXTRACTOR__) {
