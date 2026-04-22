@@ -1,15 +1,4 @@
-// ==UserScript==
-// @name         SAB_Awwal_Smart_Panel
-// @namespace    http://tampermonkey.net/
-// @version      11.0
-// @description  لوحة أدوات ساب الأول - نسخة مطورة
-// @author       You
-// @match        https://sabicorp.sab.com/Corporate/*
-// @noframes
-// @grant        GM_setClipboard
-// @run-at       document-end
-// ==/UserScript==
-
+// SAB EL AWL SMART PANEL
 (function() {
     'use strict';
 
