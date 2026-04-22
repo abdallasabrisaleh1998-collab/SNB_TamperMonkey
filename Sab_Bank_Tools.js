@@ -260,7 +260,104 @@
                 flashBtn(btn, 'بدء التنشيط ⚡');
             }
         });
+
+
+        // ================================================================
+        // الزر الرابع: تقسيم العنوان
+        // ================================================================
+        
+        // إضافة الـ UI الخاص بالتقسيم
+        const dividerSection = document.createElement('div');
+        dividerSection.style.cssText = 'padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;';
+        dividerSection.innerHTML = `
+            <div class="sab-divider">تقسيم العنوان</div>
+            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..." 
+                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px; 
+                       font-size:12px; resize:none; height:60px; direction:ltr; box-sizing:border-box;
+                       font-family:Arial; outline:none;"></textarea>
+            <button id="sab-split-btn" class="tool-btn">
+                <span>تقسيم العنوان</span><span>✂️</span>
+            </button>
+            <div id="sab-split-result" style="display:flex; flex-direction:column; gap:5px;"></div>
+        `;
+        document.getElementById('sab-body').appendChild(dividerSection);
+        
+        document.getElementById('sab-split-btn').addEventListener('click', () => {
+            const raw = document.getElementById('sab-address-input').value.trim();
+            if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
+        
+            // تقسيم العنوان على كلمات مع احترام الـ 35 حرف
+            const words = raw.split(/\s+/);
+            const lines = [];
+            let current = '';
+        
+            for (const word of words) {
+                const test = current ? `${current} ${word}` : word;
+                if (test.length <= 35) {
+                    current = test;
+                } else {
+                    if (current) lines.push(current);
+                    current = word.slice(0, 35); // لو كلمة أطول من 35 حرف تقطع
+                }
+                if (lines.length === 2 && current) {
+                    // الحقل التالت ياخد الباقي كله مقطوع على 35
+                    lines.push(current);
+                    current = '';
+                    break;
+                }
+            }
+            if (current && lines.length < 3) lines.push(current);
+        
+            // عرض النتيجة
+            const resultDiv = document.getElementById('sab-split-result');
+            resultDiv.innerHTML = '';
+        
+            lines.forEach((line, i) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:5px;';
+                row.innerHTML = `
+                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px; 
+                                padding:6px 8px; font-size:11px; direction:ltr; font-family:Arial;
+                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" 
+                         title="${line}">${line}</div>
+                    <button class="sab-copy-line" data-val="${line}"
+                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px; 
+                               padding:6px 10px; cursor:pointer; font-size:11px; white-space:nowrap;">
+                        نسخ ${i + 1}
+                    </button>
+                `;
+                resultDiv.appendChild(row);
+            });
+        
+            // أحداث النسخ
+            resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const val = btn.getAttribute('data-val');
+                    if (typeof GM_setClipboard !== 'undefined') {
+                        GM_setClipboard(val);
+                    } else {
+                        navigator.clipboard.writeText(val).catch(() => {
+                            const tmp = document.createElement('textarea');
+                            tmp.value = val;
+                            document.body.appendChild(tmp);
+                            tmp.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(tmp);
+                        });
+                    }
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '✅';
+                    btn.style.background = '#28a745';
+                    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#e11d1d'; }, 1500);
+                });
+            });
+        });
+
+
+
+        
     };
+    
 
     // تشغيل وبناء
     buildSidebar();
