@@ -3,15 +3,14 @@
     'use strict';
 
     if (window.__SAB_PANEL__) {
-    console.log("⛔ Panel already running");
-    return;
+        console.log("⛔ Panel already running");
+        return;
     }
     window.__SAB_PANEL__ = true;
 
     const SIDEBAR_ID = 'sab-helper-sidebar';
     let antiLogoutInterval = null;
 
-    // ---- جلب الـ iframe document ----
     const getIframeDoc = () => {
         const iframe = document.querySelector('iframe');
         if (!iframe) return null;
@@ -20,14 +19,12 @@
         } catch (e) { return null; }
     };
 
-    // ---- جلب element من iframe أو document ----
     const getEl = (selector) => {
         return document.querySelector(selector)
-        || getIframeDoc()?.querySelector(selector)
-        || null;
+            || getIframeDoc()?.querySelector(selector)
+            || null;
     };
 
-    // ---- جلب البيانات من الجداول ----
     const getDataByLabel = (labelText) => {
         const searchIn = (doc) => {
             const allRows = Array.from(doc.querySelectorAll('table tr'));
@@ -40,7 +37,6 @@
             const numSpan = cell?.querySelector('.num');
             return numSpan ? numSpan.innerText.trim() : cell?.innerText.trim() ?? "";
         };
-
         let result = searchIn(document);
         if (result === null) {
             try { result = searchIn(getIframeDoc()); } catch (e) {}
@@ -48,7 +44,6 @@
         return result ?? "";
     };
 
-    // ---- دالة كتابة في input مع تفعيل events ----
     const fillInput = (el, value) => {
         if (!el) return false;
         el.removeAttribute('onpaste');
@@ -61,7 +56,6 @@
         return true;
     };
 
-    // ---- اختيار من Chosen select ----
     const selectChosenOption = (doc, selectId, optionValue) => {
         const selectEl = doc?.querySelector(`#${selectId}`);
         if (!selectEl) return false;
@@ -74,13 +68,11 @@
         return true;
     };
 
-    // ---- توليد رقم فاتورة ----
     const generateInvoiceNumber = () => {
         const rnd = (len, pool) => Array.from({length: len}, () => pool[Math.floor(Math.random() * pool.length)]).join('');
         return `INV-${new Date().getFullYear()}-${rnd(2, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')}${rnd(2, '0123456789')}`;
     };
 
-    // ---- flash ----
     const flashBtn = (btn, msg = 'تم ✅') => {
         const orig = btn.innerHTML;
         btn.classList.add('success');
@@ -91,11 +83,20 @@
         }, 2000);
     };
 
-    // ---- بناء اللوحة ----
+    const copyText = (text) => {
+        const tmp = document.createElement('textarea');
+        tmp.value = text;
+        tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+        document.body.appendChild(tmp);
+        tmp.focus();
+        tmp.select();
+        document.execCommand('copy');
+        document.body.removeChild(tmp);
+    };
+
     const buildSidebar = () => {
         if (document.getElementById(SIDEBAR_ID)) return;
 
-        // 1. الاستايل (تم تنظيفه ودمجه)
         if (!document.getElementById('sab-style')) {
             const style = document.createElement('style');
             style.id = 'sab-style';
@@ -115,12 +116,10 @@
                     direction: rtl;
                     transition: right 0.3s ease;
                 }
-                #sab-helper-sidebar.collapsed {
-                    right: -230px;
-                }
+                #sab-helper-sidebar.collapsed { right: -230px; }
                 #sab-toggle-tab {
                     position: absolute;
-                    left: -42px; /* بروز من جهة اليسار */
+                    left: -42px;
                     top: 10px;
                     width: 40px;
                     height: 45px;
@@ -147,16 +146,14 @@
         const sidebar = document.createElement('div');
         sidebar.id = SIDEBAR_ID;
 
-        // التحقق من حالة الإخفاء السابقة
         if (localStorage.getItem('sab_sidebar_collapsed') === 'true') {
             sidebar.classList.add('collapsed');
         }
 
-        // زرار الإظهار والإخفاء (الترس)
         const toggleTab = document.createElement('div');
         toggleTab.id = 'sab-toggle-tab';
         toggleTab.innerHTML = sidebar.classList.contains('collapsed') ? '🛠️' : '❌';
-        toggleTab.onclick = (e) => {
+        toggleTab.onclick = () => {
             sidebar.classList.toggle('collapsed');
             const isCollapsed = sidebar.classList.contains('collapsed');
             localStorage.setItem('sab_sidebar_collapsed', isCollapsed);
@@ -164,7 +161,6 @@
         };
         sidebar.appendChild(toggleTab);
 
-        // محتوى اللوحة
         const content = document.createElement('div');
         content.innerHTML = `
             <div class="sab-header">🛠️ أدوات ساب الأول</div>
@@ -183,33 +179,23 @@
             document.getElementById('sab-body').appendChild(btn);
         };
 
-        // --- الأزرار ---
+        // ================================================================
+        // الزر الأول: نسخ وتحميل
+        // ================================================================
+        addBtn('نسخ وتحميل', '📥', (btn) => {
+            const bName = getDataByLabel('Beneficiary Name');
+            const amt = getDataByLabel('Transfer Amount');
+            const acc = getDataByLabel('From Account Number');
+            if (!bName || !amt) { alert('⚠️ بيانات ناقصة'); return; }
+            const final = `${bName.split(/\s+/).slice(0, 2).join(' ')} $ ${amt.split('.')[0]} ${acc}`;
+            copyText(final);
+            getEl('#payment_advice_download')?.click();
+            flashBtn(btn, 'تم النسخ ✅');
+        });
 
- addBtn('نسخ وتحميل', '📥', (btn) => {
-    const bName = getDataByLabel('Beneficiary Name');
-    const amt = getDataByLabel('Transfer Amount');
-    const acc = getDataByLabel('From Account Number');
-    if (!bName || !amt) { alert('⚠️ بيانات ناقصة'); return; }
-    const final = `${bName.split(/\s+/).slice(0, 2).join(' ')} $ ${amt.split('.')[0]} ${acc}`;
-
-    // نسخ مباشر بدون async
-    const tmp = document.createElement('textarea');
-    tmp.value = final;
-    tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-    document.body.appendChild(tmp);
-    tmp.focus();
-    tmp.select();
-    document.execCommand('copy');
-    document.body.removeChild(tmp);
-
-    getEl('#payment_advice_download')?.click();
-    flashBtn(btn, 'تم النسخ ✅');
-});
-
-    getEl('#payment_advice_download')?.click();
-    flashBtn(btn, 'تم النسخ ✅');
-});
-
+        // ================================================================
+        // الزر الثاني: ملء البيانات
+        // ================================================================
         addBtn('ملء البيانات', '⚡', (btn) => {
             const iDoc = getIframeDoc();
             const inv = generateInvoiceNumber();
@@ -225,11 +211,9 @@
         });
 
         // ================================================================
-        // الزر الثالث: التنشيط التلقائي (الضغط على زر الصفحة الرئيسية)
+        // الزر الثالث: التنشيط التلقائي
         // ================================================================
-
         const triggerClick = () => {
-            // العنصر اللي إنت حددته بالظبط
             const target = getEl("#appwrapper > header > a");
             if (target) {
                 console.log('SAB Tools: تم الضغط لتنشيط الجلسة ✅');
@@ -239,54 +223,36 @@
             }
         };
 
-        // فحص الحالة المخزنة
         let isActive = localStorage.getItem('sab_anti_logout') === 'true';
-
-        // تشغيل التايمر تلقائياً لو كان "شغال" قبل كدة
         if (isActive && !antiLogoutInterval) {
             antiLogoutInterval = setInterval(triggerClick, 10000);
         }
 
-        const btnLabel = isActive ? 'إيقاف التنشيط' : 'تنشيط (10 ثواني)';
-        const btnIcon = isActive ? '🛑' : '🔄';
-
-        addBtn(btnLabel, btnIcon, (btn) => {
-            // قراءة الحالة الحالية من التخزين
+        addBtn(isActive ? 'إيقاف التنشيط' : 'تنشيط (10 ثواني)', isActive ? '🛑' : '🔄', (btn) => {
             let currentlyActive = localStorage.getItem('sab_anti_logout') === 'true';
-
             if (currentlyActive) {
-                // --- أمر الإيقاف ---
                 localStorage.setItem('sab_anti_logout', 'false');
-                if (antiLogoutInterval) {
-                    clearInterval(antiLogoutInterval);
-                    antiLogoutInterval = null;
-                }
-                // تحديث الزرار فوراً بدون ريفريش للصفحة
+                if (antiLogoutInterval) { clearInterval(antiLogoutInterval); antiLogoutInterval = null; }
                 btn.innerHTML = `<span>تنشيط (10 ثواني)</span><span class="btn-icon">🔄</span>`;
                 flashBtn(btn, 'تم الإيقاف ⏹️');
             } else {
-                // --- أمر التشغيل ---
                 localStorage.setItem('sab_anti_logout', 'true');
-                triggerClick(); // اضغط فوراً أول مرة
+                triggerClick();
                 antiLogoutInterval = setInterval(triggerClick, 10000);
-                // تحديث الزرار فوراً
                 btn.innerHTML = `<span>إيقاف التنشيط</span><span class="btn-icon">🛑</span>`;
                 flashBtn(btn, 'بدء التنشيط ⚡');
             }
         });
 
-
         // ================================================================
         // الزر الرابع: تقسيم العنوان
         // ================================================================
-        
-        // إضافة الـ UI الخاص بالتقسيم
         const dividerSection = document.createElement('div');
         dividerSection.style.cssText = 'padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;';
         dividerSection.innerHTML = `
             <div class="sab-divider">تقسيم العنوان</div>
-            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..." 
-                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px; 
+            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..."
+                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px;
                        font-size:12px; resize:none; height:60px; direction:ltr; box-sizing:border-box;
                        font-family:Arial; outline:none;"></textarea>
             <button id="sab-split-btn" class="tool-btn">
@@ -295,70 +261,55 @@
             <div id="sab-split-result" style="display:flex; flex-direction:column; gap:5px;"></div>
         `;
         document.getElementById('sab-body').appendChild(dividerSection);
-        
+
         document.getElementById('sab-split-btn').addEventListener('click', () => {
             const raw = document.getElementById('sab-address-input').value.trim();
             if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
-        
-            // تقسيم العنوان على كلمات مع احترام الـ 35 حرف
+
             const words = raw.split(/\s+/);
             const lines = [];
             let current = '';
-        
+
             for (const word of words) {
+                if (lines.length === 2) {
+                    // الحقل التالت: ضيف الكلمة لو تتسع، لو لأ اقطع
+                    const test = current ? `${current} ${word}` : word;
+                    current = test.slice(0, 35);
+                    break;
+                }
                 const test = current ? `${current} ${word}` : word;
                 if (test.length <= 35) {
                     current = test;
                 } else {
-                    if (current) lines.push(current);
-                    current = word.slice(0, 35); // لو كلمة أطول من 35 حرف تقطع
-                }
-                if (lines.length === 2 && current) {
-                    // الحقل التالت ياخد الباقي كله مقطوع على 35
                     lines.push(current);
-                    current = '';
-                    break;
+                    current = word.slice(0, 35);
                 }
             }
             if (current && lines.length < 3) lines.push(current);
-        
-            // عرض النتيجة
+
             const resultDiv = document.getElementById('sab-split-result');
             resultDiv.innerHTML = '';
-        
+
             lines.forEach((line, i) => {
                 const row = document.createElement('div');
                 row.style.cssText = 'display:flex; align-items:center; gap:5px;';
                 row.innerHTML = `
-                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px; 
+                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px;
                                 padding:6px 8px; font-size:11px; direction:ltr; font-family:Arial;
-                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" 
+                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
                          title="${line}">${line}</div>
                     <button class="sab-copy-line" data-val="${line}"
-                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px; 
+                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px;
                                padding:6px 10px; cursor:pointer; font-size:11px; white-space:nowrap;">
                         نسخ ${i + 1}
                     </button>
                 `;
                 resultDiv.appendChild(row);
             });
-        
-            // أحداث النسخ
+
             resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    const val = btn.getAttribute('data-val');
-                    if (typeof GM_setClipboard !== 'undefined') {
-                        GM_setClipboard(val);
-                    } else {
-                        navigator.clipboard.writeText(val).catch(() => {
-                            const tmp = document.createElement('textarea');
-                            tmp.value = val;
-                            document.body.appendChild(tmp);
-                            tmp.select();
-                            document.execCommand('copy');
-                            document.body.removeChild(tmp);
-                        });
-                    }
+                    copyText(btn.getAttribute('data-val'));
                     const orig = btn.innerHTML;
                     btn.innerHTML = '✅';
                     btn.style.background = '#28a745';
@@ -366,18 +317,11 @@
                 });
             });
         });
-
-
-
-        
     };
-    
 
-    // تشغيل وبناء
     buildSidebar();
     if (!window.__SAB_SIDEBAR_INTERVAL__) {
         window.__SAB_SIDEBAR_INTERVAL__ = true;
-    
         setInterval(() => {
             if (!document.getElementById(SIDEBAR_ID)) buildSidebar();
         }, 1000);
