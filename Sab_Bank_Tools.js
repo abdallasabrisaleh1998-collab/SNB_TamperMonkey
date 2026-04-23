@@ -185,22 +185,26 @@
 
         // --- الأزرار ---
 
-        addBtn('نسخ وتحميل', '📥', (btn) => {
+ addBtn('نسخ وتحميل', '📥', (btn) => {
     const bName = getDataByLabel('Beneficiary Name');
     const amt = getDataByLabel('Transfer Amount');
     const acc = getDataByLabel('From Account Number');
     if (!bName || !amt) { alert('⚠️ بيانات ناقصة'); return; }
     const final = `${bName.split(/\s+/).slice(0, 2).join(' ')} $ ${amt.split('.')[0]} ${acc}`;
 
-    // ← بدل GM_setClipboard
-    navigator.clipboard.writeText(final).catch(() => {
-        const tmp = document.createElement('textarea');
-        tmp.value = final;
-        document.body.appendChild(tmp);
-        tmp.select();
-        document.execCommand('copy');
-        document.body.removeChild(tmp);
-    });
+    // نسخ مباشر بدون async
+    const tmp = document.createElement('textarea');
+    tmp.value = final;
+    tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
+    document.body.appendChild(tmp);
+    tmp.focus();
+    tmp.select();
+    document.execCommand('copy');
+    document.body.removeChild(tmp);
+
+    getEl('#payment_advice_download')?.click();
+    flashBtn(btn, 'تم النسخ ✅');
+});
 
     getEl('#payment_advice_download')?.click();
     flashBtn(btn, 'تم النسخ ✅');
