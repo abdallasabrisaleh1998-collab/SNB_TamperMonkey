@@ -1,330 +1,179 @@
-// SAB EL AWL SMART PANEL
+// SAB EL AWL SMART PANEL - STABLE VERSION
 (function() {
     'use strict';
 
-    if (window.__SAB_PANEL__) {
-        console.log("⛔ Panel already running");
-        return;
-    }
-    window.__SAB_PANEL__ = true;
+    if (window.__SAB_PANEL_LOADED__) return;
+    window.__SAB_PANEL_LOADED__ = true;
 
     const SIDEBAR_ID = 'sab-helper-sidebar';
-    let antiLogoutInterval = null;
 
+    // --- وظائف المساعدة الأساسية ---
     const getIframeDoc = () => {
-        const iframe = document.querySelector('iframe');
-        if (!iframe) return null;
+        const iframe = document.querySelector('iframe#legacyIframe, iframe[name="legacyIframe"]');
+        if (!iframe) return document;
+        try { return iframe.contentDocument || iframe.contentWindow.document; } catch (e) { return document; }
+    };
+
+    const copyToClipboard = (text) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        document.body.appendChild(textArea);
+        textArea.select();
         try {
-            return iframe.contentDocument || iframe.contentWindow?.document;
-        } catch (e) { return null; }
-    };
-
-    const getEl = (selector) => {
-        return document.querySelector(selector)
-            || getIframeDoc()?.querySelector(selector)
-            || null;
-    };
-
-    const getDataByLabel = (labelText) => {
-        const searchIn = (doc) => {
-            const allRows = Array.from(doc.querySelectorAll('table tr'));
-            const targetRow = allRows.find(row => {
-                const label = row.querySelector('label.custLabel');
-                return label && label.innerText.trim() === labelText;
-            });
-            if (!targetRow) return null;
-            const cell = targetRow.querySelector('td:last-child');
-            const numSpan = cell?.querySelector('.num');
-            return numSpan ? numSpan.innerText.trim() : cell?.innerText.trim() ?? "";
-        };
-        let result = searchIn(document);
-        if (result === null) {
-            try { result = searchIn(getIframeDoc()); } catch (e) {}
+            document.execCommand('copy');
+        } catch (err) {
+            console.error('فشل النسخ:', err);
         }
-        return result ?? "";
+        document.body.removeChild(textArea);
     };
 
-    const fillInput = (el, value) => {
-        if (!el) return false;
+    const unlockField = (el) => {
+        if (!el) return;
         el.removeAttribute('onpaste');
-        el.setAttribute('type', 'text');
-        const nativeSetter = Object.getOwnPropertyDescriptor(el.ownerDocument.defaultView.HTMLInputElement.prototype, 'value')?.set;
-        if (nativeSetter) nativeSetter.call(el, value); else el.value = value;
-        el.dispatchEvent(new Event('input', { bubbles: true }));
-        el.dispatchEvent(new Event('change', { bubbles: true }));
-        el.dispatchEvent(new Event('blur', { bubbles: true }));
-        return true;
+        el.removeAttribute('oncopy');
+        el.removeAttribute('oncut');
+        el.removeAttribute('readonly');
+        // فك حماية المستمعين (Listeners)
+        el.onpaste = null;
+        // تغيير النوع لنص لضمان القبول
+        if (el.tagName === 'INPUT') el.setAttribute('type', 'text');
     };
 
-    const selectChosenOption = (doc, selectId, optionValue) => {
-        const selectEl = doc?.querySelector(`#${selectId}`);
-        if (!selectEl) return false;
-        selectEl.value = optionValue;
-        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
-        try {
-            const iWin = getIframeDoc()?.defaultView;
-            if (iWin?.$) iWin.$(`#${selectId}`).trigger('chosen:updated').trigger('change');
-        } catch (e) {}
-        return true;
+    // --- منطق تقسيم العنوان (المحسن) ---
+    const splitAddressLogic = (text) => {
+        const words = text.trim().split(/\s+/);
+        let lines = ["", "", ""];
+        let currentLine = 0;
+
+        for (let word of words) {
+            if (currentLine > 2) break;
+            
+            let testLine = lines[currentLine] ? lines[currentLine] + " " + word : word;
+            
+            if (testLine.length <= 35) {
+                lines[currentLine] = testLine;
+            } else {
+                currentLine++;
+                if (currentLine <= 2) {
+                    lines[currentLine] = word.substring(0, 35);
+                }
+            }
+        }
+        return lines.filter(l => l !== "");
     };
 
-    const generateInvoiceNumber = () => {
-        const rnd = (len, pool) => Array.from({length: len}, () => pool[Math.floor(Math.random() * pool.length)]).join('');
-        return `INV-${new Date().getFullYear()}-${rnd(2, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ')}${rnd(2, '0123456789')}`;
-    };
-
-    const flashBtn = (btn, msg = 'تم ✅') => {
-        const orig = btn.innerHTML;
-        btn.classList.add('success');
-        btn.innerHTML = `<span>${msg}</span>`;
-        setTimeout(() => {
-            btn.classList.remove('success');
-            btn.innerHTML = orig;
-        }, 2000);
-    };
-
-    const copyText = (text) => {
-        const tmp = document.createElement('textarea');
-        tmp.value = text;
-        tmp.style.cssText = 'position:fixed;top:-9999px;left:-9999px;opacity:0;';
-        document.body.appendChild(tmp);
-        tmp.focus();
-        tmp.select();
-        document.execCommand('copy');
-        document.body.removeChild(tmp);
-    };
-
+    // --- بناء اللوحة ---
     const buildSidebar = () => {
         if (document.getElementById(SIDEBAR_ID)) return;
 
-        if (!document.getElementById('sab-style')) {
-            const style = document.createElement('style');
-            style.id = 'sab-style';
-            style.textContent = `
-                #sab-helper-sidebar {
-                    position: fixed;
-                    right: 0;
-                    top: 20%;
-                    width: 230px;
-                    background: #fff;
-                    border: 2px solid #e11d1d;
-                    border-right: none;
-                    border-radius: 12px 0 0 12px;
-                    z-index: 9999999;
-                    box-shadow: -4px 0 16px rgba(0,0,0,0.18);
-                    font-family: Arial, sans-serif;
-                    direction: rtl;
-                    transition: right 0.3s ease;
-                }
-                #sab-helper-sidebar.collapsed { right: -230px; }
-                #sab-toggle-tab {
-                    position: absolute;
-                    left: -42px;
-                    top: 10px;
-                    width: 40px;
-                    height: 45px;
-                    background: #e11d1d;
-                    color: #fff;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    cursor: pointer;
-                    border-radius: 10px 0 0 10px;
-                    font-size: 20px;
-                    box-shadow: -2px 0 8px rgba(0,0,0,0.1);
-                }
-                .sab-header { background: #e11d1d; color: #fff; padding: 11px 14px; font-weight: bold; font-size: 14px; border-radius: 10px 0 0 0; }
-                .sab-divider { font-size: 10px; color: #aaa; padding: 6px 14px 2px; text-transform: uppercase; }
-                .sab-body { padding: 8px; display: flex; flex-direction: column; gap: 6px; }
-                .tool-btn { background: #fafafa; border: 1px solid #e5e5e5; padding: 10px 12px; border-radius: 8px; cursor: pointer; font-size: 13px; display: flex; align-items: center; justify-content: space-between; transition: 0.2s; color: #333; font-weight: 600; width: 100%; }
-                .tool-btn:hover { background: #fff1f1; border-color: #e11d1d; transform: translateX(-4px); }
-                .tool-btn.success { background: #28a745 !important; color: #fff !important; }
-            `;
-            document.head.appendChild(style);
-        }
-
         const sidebar = document.createElement('div');
         sidebar.id = SIDEBAR_ID;
-
-        if (localStorage.getItem('sab_sidebar_collapsed') === 'true') {
-            sidebar.classList.add('collapsed');
-        }
-
-        const toggleTab = document.createElement('div');
-        toggleTab.id = 'sab-toggle-tab';
-        toggleTab.innerHTML = sidebar.classList.contains('collapsed') ? '🛠️' : '❌';
-        toggleTab.onclick = () => {
-            sidebar.classList.toggle('collapsed');
-            const isCollapsed = sidebar.classList.contains('collapsed');
-            localStorage.setItem('sab_sidebar_collapsed', isCollapsed);
-            toggleTab.innerHTML = isCollapsed ? '🛠️' : '❌';
-        };
-        sidebar.appendChild(toggleTab);
-
-        const content = document.createElement('div');
-        content.innerHTML = `
-            <div class="sab-header">🛠️ أدوات ساب الأول</div>
-            <div class="sab-body" id="sab-body">
-                <div class="sab-divider">الأدوات الأساسية</div>
+        sidebar.innerHTML = `
+            <style>
+                #${SIDEBAR_ID} { position: fixed; right: 0; top: 15%; width: 240px; background: #fff; border: 2px solid #e11d1d; 
+                z-index: 9999999; border-radius: 12px 0 0 12px; box-shadow: -5px 0 15px rgba(0,0,0,0.2); font-family: Arial; direction: rtl; }
+                .sab-header { background: #e11d1d; color: #fff; padding: 10px; font-weight: bold; text-align: center; }
+                .sab-content { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+                .sab-btn { background: #f9f9f9; border: 1px solid #ddd; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; transition: 0.3s; }
+                .sab-btn:hover { background: #fff1f1; border-color: #e11d1d; }
+                .sab-input { width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 4px; font-size: 11px; margin-bottom: 5px; }
+                .line-res { display: flex; justify-content: space-between; align-items: center; background: #eee; padding: 4px; border-radius: 4px; margin-top: 2px; font-size: 10px; }
+                .copy-small { background: #e11d1d; color: #fff; border: none; padding: 2px 5px; border-radius: 3px; cursor: pointer; }
+            </style>
+            <div class="sab-header">🛠️ أدوات ساب المتطورة</div>
+            <div class="sab-content">
+                <button id="btn-copy-download" class="sab-btn">📥 نسخ وتحميل التقرير</button>
+                <button id="btn-unlock-fill" class="sab-btn">⚡ فك الحماية وملء البيانات</button>
+                <hr>
+                <div style="font-size: 11px; font-weight: bold; color: #666;">✂️ تقسيم العنوان (35 حرف):</div>
+                <textarea id="addr-input" class="sab-input" placeholder="ضع العنوان هنا..." rows="2"></textarea>
+                <button id="btn-split" class="sab-btn" style="background:#444; color:#fff;">تقسيم</button>
+                <div id="split-results"></div>
             </div>
         `;
-        sidebar.appendChild(content);
         document.body.appendChild(sidebar);
 
-        const addBtn = (label, icon, onClick) => {
-            const btn = document.createElement('button');
-            btn.className = 'tool-btn';
-            btn.innerHTML = `<span>${label}</span><span class="btn-icon">${icon}</span>`;
-            btn.addEventListener('click', () => onClick(btn));
-            document.getElementById('sab-body').appendChild(btn);
+        // --- أحداث الأزرار ---
+
+        // 1. نسخ وتحميل
+        document.getElementById('btn-copy-download').onclick = function() {
+            const doc = getIframeDoc();
+            const labels = Array.from(doc.querySelectorAll('label.custLabel'));
+            const findVal = (txt) => {
+                const l = labels.find(el => el.innerText.includes(txt));
+                if (!l) return "";
+                const td = l.closest('tr').querySelector('td:last-child');
+                return td ? td.innerText.trim() : "";
+            };
+
+            const bName = findVal('Beneficiary Name').split(/\s+/).slice(0, 2).join(' ');
+            const amt = findVal('Transfer Amount').split('.')[0];
+            const acc = findVal('From Account Number');
+
+            if (!bName || !amt) { alert("بيانات غير مكتملة!"); return; }
+
+            copyToClipboard(`${bName} $ ${amt} ${acc}`);
+            const downBtn = doc.getElementById('payment_advice_download') || document.getElementById('payment_advice_download');
+            if (downBtn) downBtn.click();
+            this.innerText = "✅ تم النسخ";
+            setTimeout(() => this.innerText = "📥 نسخ وتحميل التقرير", 2000);
         };
 
-        // ================================================================
-        // الزر الأول: نسخ وتحميل
-        // ================================================================
-        addBtn('نسخ وتحميل', '📥', (btn) => {
-            const bName = getDataByLabel('Beneficiary Name');
-            const amt = getDataByLabel('Transfer Amount');
-            const acc = getDataByLabel('From Account Number');
-            if (!bName || !amt) { alert('⚠️ بيانات ناقصة'); return; }
-            const final = `${bName.split(/\s+/).slice(0, 2).join(' ')} $ ${amt.split('.')[0]} ${acc}`;
-            copyText(final);
-            getEl('#payment_advice_download')?.click();
-            flashBtn(btn, 'تم النسخ ✅');
-        });
+        // 2. فك الحماية والملء
+        document.getElementById('btn-unlock-fill').onclick = function() {
+            const doc = getIframeDoc();
+            // قائمة بكل الـ IDs المحتملة للحماية
+            const ids = ['beneficiaryAccNo', 'otherPurposeOfTransfer', 'forAccount', 'forBeneficiary', 'purposeOfTransferCODE'];
+            
+            ids.forEach(id => {
+                const el = doc.getElementById(id);
+                if (el) unlockField(el);
+            });
 
-        // ================================================================
-        // الزر الثاني: ملء البيانات
-        // ================================================================
-        addBtn('ملء البيانات', '⚡', (btn) => {
-            const iDoc = getIframeDoc();
-            const inv = generateInvoiceNumber();
-            const accNo = iDoc?.querySelector('#beneficiaryAccNo');
-            if (accNo) { accNo.removeAttribute('onpaste'); accNo.setAttribute('type', 'text'); }
-            selectChosenOption(iDoc, 'purposeOfTransferCODE', 'OTHER_PURPOSE');
+            // ملء تجريبي
+            const purpose = doc.getElementById('purposeOfTransferCODE');
+            if (purpose) {
+                purpose.value = 'OTHER_PURPOSE';
+                purpose.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            
             setTimeout(() => {
-                fillInput(iDoc?.querySelector('#otherPurposeOfTransfer'), 'PURCHASE OF GOODS');
-                fillInput(iDoc?.querySelector('#forAccount'), 'PURCHASE OF GOODS');
-                fillInput(iDoc?.querySelector('#forBeneficiary'), `INVOICE ${inv}`);
-                flashBtn(btn);
-            }, 800);
-        });
-
-        // ================================================================
-        // الزر الثالث: التنشيط التلقائي
-        // ================================================================
-        const triggerClick = () => {
-            const target = getEl("#appwrapper > header > a");
-            if (target) {
-                console.log('SAB Tools: تم الضغط لتنشيط الجلسة ✅');
-                target.click();
-            } else {
-                console.warn('SAB Tools: زر التنشيط غير موجود في هذه الصفحة');
-            }
+                const other = doc.getElementById('otherPurposeOfTransfer');
+                if (other) other.value = 'PURCHASE OF GOODS';
+                const forAcc = doc.getElementById('forAccount');
+                if (forAcc) forAcc.value = 'PURCHASE OF GOODS';
+                this.innerText = "✅ تم فك الحماية";
+            }, 500);
         };
 
-        let isActive = localStorage.getItem('sab_anti_logout') === 'true';
-        if (isActive && !antiLogoutInterval) {
-            antiLogoutInterval = setInterval(triggerClick, 10000);
-        }
+        // 3. التقسيم
+        document.getElementById('btn-split').onclick = function() {
+            const input = document.getElementById('addr-input').value;
+            const results = splitAddressLogic(input);
+            const container = document.getElementById('split-results');
+            container.innerHTML = '';
 
-        addBtn(isActive ? 'إيقاف التنشيط' : 'تنشيط (10 ثواني)', isActive ? '🛑' : '🔄', (btn) => {
-            let currentlyActive = localStorage.getItem('sab_anti_logout') === 'true';
-            if (currentlyActive) {
-                localStorage.setItem('sab_anti_logout', 'false');
-                if (antiLogoutInterval) { clearInterval(antiLogoutInterval); antiLogoutInterval = null; }
-                btn.innerHTML = `<span>تنشيط (10 ثواني)</span><span class="btn-icon">🔄</span>`;
-                flashBtn(btn, 'تم الإيقاف ⏹️');
-            } else {
-                localStorage.setItem('sab_anti_logout', 'true');
-                triggerClick();
-                antiLogoutInterval = setInterval(triggerClick, 10000);
-                btn.innerHTML = `<span>إيقاف التنشيط</span><span class="btn-icon">🛑</span>`;
-                flashBtn(btn, 'بدء التنشيط ⚡');
-            }
-        });
-
-        // ================================================================
-        // الزر الرابع: تقسيم العنوان
-        // ================================================================
-        const dividerSection = document.createElement('div');
-        dividerSection.style.cssText = 'padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;';
-        dividerSection.innerHTML = `
-            <div class="sab-divider">تقسيم العنوان</div>
-            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..."
-                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px;
-                       font-size:12px; resize:none; height:60px; direction:ltr; box-sizing:border-box;
-                       font-family:Arial; outline:none;"></textarea>
-            <button id="sab-split-btn" class="tool-btn">
-                <span>تقسيم العنوان</span><span>✂️</span>
-            </button>
-            <div id="sab-split-result" style="display:flex; flex-direction:column; gap:5px;"></div>
-        `;
-        document.getElementById('sab-body').appendChild(dividerSection);
-
-        document.getElementById('sab-split-btn').addEventListener('click', () => {
-            const raw = document.getElementById('sab-address-input').value.trim();
-            if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
-
-            const words = raw.split(/\s+/);
-            const lines = [];
-            let current = '';
-
-            for (const word of words) {
-                if (lines.length === 2) {
-                    // الحقل التالت: ضيف الكلمة لو تتسع، لو لأ اقطع
-                    const test = current ? `${current} ${word}` : word;
-                    current = test.slice(0, 35);
-                    break;
-                }
-                const test = current ? `${current} ${word}` : word;
-                if (test.length <= 35) {
-                    current = test;
-                } else {
-                    lines.push(current);
-                    current = word.slice(0, 35);
-                }
-            }
-            if (current && lines.length < 3) lines.push(current);
-
-            const resultDiv = document.getElementById('sab-split-result');
-            resultDiv.innerHTML = '';
-
-            lines.forEach((line, i) => {
-                const row = document.createElement('div');
-                row.style.cssText = 'display:flex; align-items:center; gap:5px;';
-                row.innerHTML = `
-                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px;
-                                padding:6px 8px; font-size:11px; direction:ltr; font-family:Arial;
-                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
-                         title="${line}">${line}</div>
-                    <button class="sab-copy-line" data-val="${line}"
-                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px;
-                               padding:6px 10px; cursor:pointer; font-size:11px; white-space:nowrap;">
-                        نسخ ${i + 1}
-                    </button>
+            results.forEach((line, i) => {
+                const div = document.createElement('div');
+                div.className = 'line-res';
+                div.innerHTML = `
+                    <span style="width: 140px; overflow: hidden;">${i+1}: ${line}</span>
+                    <button class="copy-small" data-text="${line}">نسخ</button>
                 `;
-                resultDiv.appendChild(row);
+                container.appendChild(div);
             });
 
-            resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
-                btn.addEventListener('click', () => {
-                    copyText(btn.getAttribute('data-val'));
-                    const orig = btn.innerHTML;
-                    btn.innerHTML = '✅';
-                    btn.style.background = '#28a745';
-                    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#e11d1d'; }, 1500);
-                });
+            container.querySelectorAll('.copy-small').forEach(b => {
+                b.onclick = () => {
+                    copyToClipboard(b.getAttribute('data-text'));
+                    b.innerText = "👍";
+                    setTimeout(() => b.innerText = "نسخ", 1000);
+                };
             });
-        });
+        };
     };
 
-    buildSidebar();
-    if (!window.__SAB_SIDEBAR_INTERVAL__) {
-        window.__SAB_SIDEBAR_INTERVAL__ = true;
-        setInterval(() => {
-            if (!document.getElementById(SIDEBAR_ID)) buildSidebar();
-        }, 1000);
-    }
+    // التشغيل المتكرر لضمان الظهور في صفحات الـ Ajax
+    setInterval(buildSidebar, 2000);
 
 })();
