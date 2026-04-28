@@ -199,8 +199,14 @@
         addBtn('ملء البيانات', '⚡', (btn) => {
             const iDoc = getIframeDoc();
             const inv = generateInvoiceNumber();
+            
             const accNo = iDoc?.querySelector('#beneficiaryAccNo');
             if (accNo) { accNo.removeAttribute('onpaste'); accNo.setAttribute('type', 'text'); }
+            
+            // ← السطر الجديد لخانة التأكيد
+            const confirmAccNo = iDoc?.querySelector('#confimrbeneficiaryAccNo');
+            if (confirmAccNo) { confirmAccNo.removeAttribute('onpaste'); confirmAccNo.setAttribute('type', 'text'); }
+        
             selectChosenOption(iDoc, 'purposeOfTransferCODE', 'OTHER_PURPOSE');
             setTimeout(() => {
                 fillInput(iDoc?.querySelector('#otherPurposeOfTransfer'), 'PURCHASE OF GOODS');
@@ -270,7 +276,7 @@
             const lines = [];
             let current = '';
 
-            for (const word of words) {
+           /* for (const word of words) {
                 if (lines.length === 2) {
                     // الحقل التالت: ضيف الكلمة لو تتسع، لو لأ اقطع
                     const test = current ? `${current} ${word}` : word;
@@ -286,7 +292,21 @@
                 }
             }
             if (current && lines.length < 3) lines.push(current);
+*/
 
+            for (const word of words) {
+            const test = current ? `${current} ${word}` : word;
+            if (test.length <= 35) {
+                current = test;
+            } else {
+                lines.push(current);
+                current = word.slice(0, 35);
+            }
+            if (lines.length === 2) break; // اوقف بس متمسطش current
+            }
+            if (current && lines.length < 3) lines.push(current.slice(0, 35));
+                    
+                    
             const resultDiv = document.getElementById('sab-split-result');
             resultDiv.innerHTML = '';
 
