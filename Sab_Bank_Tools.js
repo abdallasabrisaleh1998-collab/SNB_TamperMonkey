@@ -271,45 +271,35 @@
         document.getElementById('sab-split-btn').addEventListener('click', () => {
             const raw = document.getElementById('sab-address-input').value.trim();
             if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
-
+        
             const words = raw.split(/\s+/);
             const lines = [];
             let current = '';
-
-           /* for (const word of words) {
-                if (lines.length === 2) {
-                    // الحقل التالت: ضيف الكلمة لو تتسع، لو لأ اقطع
-                    const test = current ? `${current} ${word}` : word;
-                    current = test.slice(0, 35);
-                    break;
-                }
-                const test = current ? `${current} ${word}` : word;
-                if (test.length <= 35) {
-                    current = test;
-                } else {
-                    lines.push(current);
-                    current = word.slice(0, 35);
-                }
-            }
-            if (current && lines.length < 3) lines.push(current);
-*/
-
+        
             for (const word of words) {
-            const test = current ? `${current} ${word}` : word;
-            if (test.length <= 35) {
-                current = test;
-            } else {
-                lines.push(current);
-                current = word.slice(0, 35);
+                const test = current ? `${current} ${word}` : word;
+                if (lines.length < 2) {
+                    // السطر الأول والتاني: احترم الـ 35
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        lines.push(current);
+                        current = word.slice(0, 35);
+                    }
+                } else {
+                    // السطر التالت: كمّل الكلمات طول ما في مساحة
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        break; // امتلأ السطر التالت
+                    }
+                }
             }
-            if (lines.length === 2) break; // اوقف بس متمسطش current
-            }
-            if (current && lines.length < 3) lines.push(current.slice(0, 35));
-                    
-                    
+            if (current) lines.push(current.slice(0, 35));
+        
             const resultDiv = document.getElementById('sab-split-result');
             resultDiv.innerHTML = '';
-
+        
             lines.forEach((line, i) => {
                 const row = document.createElement('div');
                 row.style.cssText = 'display:flex; align-items:center; gap:5px;';
@@ -326,7 +316,7 @@
                 `;
                 resultDiv.appendChild(row);
             });
-
+        
             resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
                 btn.addEventListener('click', () => {
                     copyText(btn.getAttribute('data-val'));
