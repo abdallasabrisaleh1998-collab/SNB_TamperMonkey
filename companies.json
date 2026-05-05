@@ -28,6 +28,7 @@
     { "label": "شركة علي سالم", "corp": "7053418336", "user": "1090569953", "pass": "As123456" },
     { "label":"شركة رانيا","corp":"7053066309","user":"1112307705","pass":"Rr123456" },
     { "label":"مؤسسة رانيا","corp":"7052928780","user":"1112307705","pass":"Rrn12345" },
+    { "label":"مؤسسة علي","corp":"7053407636","user":"1090569953","pass":"Aa123456" },
     { "label":"هاما 3","corp":"remalham3","user":"remalham3","pass":"Reh12345" },
     { "label":"هاما","corp":"remalhama","user":"remalhama","pass":"Reh12345" },
     { "label":"رحاب","corp":"rehabnew1","user":"rehabnew1","pass":"Reh12345" },
