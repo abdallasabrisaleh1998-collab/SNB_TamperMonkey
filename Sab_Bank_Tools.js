@@ -194,7 +194,7 @@
         });
 
         // ================================================================
-        // أتمتة التحميل النهائي (SWIFT MT103)
+        // أتمتة التحميل النهائي (SWIFT MT103) - نسخة معالجة الـ iframe
         // ================================================================
         addBtn('تحميل النهائي MT103', '⚙️', async (btn) => {
             try {
@@ -203,16 +203,36 @@
                 if (!navLink) { alert('⚠️ لم يتم العثور على رابط القائمة الجانبية'); return; }
                 navLink.click();
         
-                // دالة مساعدة لانتظار ظهور العناصر في الصفحة
-                const waitForElement = (selector, timeout = 10000) => {
+                // دالة ذكية لانتظار ظهور العناصر تدعم الـ iframe والصفحة العادية
+                const waitForElementSmart = (selector, timeout = 10000) => {
                     return new Promise((resolve, reject) => {
                         const startTime = Date.now();
                         const interval = setInterval(() => {
-                            const el = document.querySelector(selector);
+                            // أولاً: جرب البحث في الصفحة الرئيسية
+                            let el = document.querySelector(selector);
                             if (el && el.offsetHeight > 0) {
                                 clearInterval(interval);
-                                resolve(el);
-                            } else if (Date.now() - startTime > timeout) {
+                                resolve({ element: el, context: document });
+                                return;
+                            }
+        
+                            // ثانياً: إذا لم يجده، يجرب البحث داخل أي iframe موجود بالصفحة
+                            const iframes = document.querySelectorAll('iframe');
+                            for (let iframe of iframes) {
+                                try {
+                                    const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                                    el = iframeDoc.querySelector(selector);
+                                    if (el && el.offsetHeight > 0) {
+                                        clearInterval(interval);
+                                        resolve({ element: el, context: iframeDoc });
+                                        return;
+                                    }
+                                } catch (e) {
+                                    // تجاهل أخطاء الـ Cross-origin إن وجدت
+                                }
+                            }
+        
+                            if (Date.now() - startTime > timeout) {
                                 clearInterval(interval);
                                 reject(new Error(`Timeout waiting for: ${selector}`));
                             }
@@ -220,19 +240,28 @@
                     });
                 };
         
-                // 2. انتظار ظهور الجدول الرئيسي
-                await waitForElement("#data");
+                // 2. انتظار ظهور الجدول الرئيسي (سواء في الدوم العادي أو الآيفريم)
+                const tableResult = await waitForElementSmart("#data");
+                const currentDoc = tableResult.context; // السياق الذي وجدنا فيه الجدول (document أو iframeDoc)
         
-                // 3. انتظار ظهور رابط الحوالة الأول والضغط عليه
-                const firstRowLink = await waitForElement("#data > tbody > tr:nth-child(1) > td.sorting_1 > u > a");
-                firstRowLink.click();
+                // 3. الضغط على أول رابط في الجدول بناءً على السياق الصحيح
+                const firstRowLink = currentDoc.querySelector("#data > tbody > tr:nth-child(1) > td.sorting_1 > u > a");
+                if (!firstRowLink) {
+                    // محاولة أخرى بـ Selector مرن في حال اختلف ترتيب الأعمدة
+                    const backupLink = currentDoc.querySelector("#data tbody tr:first-child a");
+                    if (backupLink) backupLink.click();
+                    else throw new Error("لم يتم العثور على رابط أول حوالة في الجدول");
+                } else {
+                    firstRowLink.click();
+                }
         
                 // 4. انتظار ظهور الموديل أو نافذة تفاصيل الحوالة (#print-me)
-                await waitForElement("#print-me");
+                const modalResult = await waitForElementSmart("#print-me");
+                const modalDoc = modalResult.context;
         
                 // دالة مساعدة للبحث عن القيمة بناءً على اسم الحقل داخل الجدول
                 const getModalDataByLabel = (labelName) => {
-                    const rows = document.querySelectorAll("#print-me table tbody tr");
+                    const rows = modalDoc.querySelectorAll("#print-me table tbody tr");
                     for (let row of rows) {
                         const cells = row.querySelectorAll("td");
                         if (cells.length >= 2) {
@@ -245,7 +274,7 @@
                     return "";
                 };
         
-                // 5. استخراج البيانات المطلوبة ديناميكياً لتجنب تغير ترتيب الصفوف
+                // 5. استخراج البيانات المطلوبة ديناميكياً
                 const corpNameRaw = getModalDataByLabel('Corporate ID');
                 const transferAmtRaw = getModalDataByLabel('Transfer Amount');
                 const beneficiaryNameRaw = getModalDataByLabel('Beneficiary Name');
@@ -256,29 +285,22 @@
                 }
         
                 // معالجة النصوص:
-                // أول كلمتين من اسم المؤسسة
                 const corpName = corpNameRaw.split(/\s+/).slice(0, 2).join(' ');
                 
-                // تعديل صيغة المبلغ من (USD 17,375.00) إلى (17,375.00 USD)
                 let amtParts = transferAmtRaw.split(/\s+/);
-                let transferAmt = transferAmtRaw; // احتياطي
+                let transferAmt = transferAmtRaw;
                 if (amtParts.length >= 2) {
                     transferAmt = `${amtParts[1]} ${amtParts[0]}`;
                 }
         
-                // أول كلمتين من اسم المستفيد
                 const beneficiaryName = beneficiaryNameRaw.split(/\s+/).slice(0, 2).join(' ');
         
-                // 6. تكوين الاسم النهائي
-                // MT103 - SWIFT - GANGFU AUTO - 17,375.00 USD - WEDAD AHMED - SABB
+                // 6. تكوين الاسم النهائي ونسخه
                 const finalName = `MT103 - SWIFT - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
-                
-                // نسخ الاسم إلى الحافظة
                 copyText(finalName);
         
-                // 7. الضغط على زر تحميل SWIFT (حل مشكلة الـ ID المتغير)
-                // بنبحث عنه هنا من خلال الـ onclick اللي بيحتوي على دالة downloadSwiftCopy
-                const downloadBtn = document.querySelector("#print-me a[onclick*='downloadSwiftCopy']");
+                // 7. الضغط على زر تحميل SWIFT
+                const downloadBtn = modalDoc.querySelector("#print-me a[onclick*='downloadSwiftCopy']");
                 
                 if (downloadBtn) {
                     downloadBtn.click();
@@ -289,10 +311,9 @@
         
             } catch (error) {
                 console.error(error);
-                alert('❌ حدث خطأ أثناء التنفيذ التلقائي: ' + error.message);
+                alert('❌ ' + error.message);
             }
         });
-
         
         // ================================================================
         // الزر الثاني: ملء البيانات
