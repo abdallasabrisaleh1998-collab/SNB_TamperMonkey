@@ -178,7 +178,7 @@
             btn.addEventListener('click', () => onClick(btn));
             document.getElementById('sab-body').appendChild(btn);
         };
-
+/*
         // ================================================================
         // الزر الأول: نسخ وتحميل
         // ================================================================
@@ -192,7 +192,47 @@
             getEl('#payment_advice_download')?.click();
             flashBtn(btn, 'تم النسخ ✅');
         });
+*/
+        // ================================================================
+        // الزر الأول: نسخ وتحميل (التحميل المبدئي)
+        // ================================================================
+        addBtn('نسخ وتحميل المبدأي', '📥', (btn) => {
+            const bNameRaw = getDataByLabel('Beneficiary Name');
+            const amtRaw = getDataByLabel('Transfer Amount');
+            
+            if (!bNameRaw || !amtRaw) { 
+                alert('⚠️ بيانات ناقصة، تأكد أنك في صفحة تفاصيل الحوالة المبدئية'); 
+                return; 
+            }
 
+            // 1. استخراج أول كلمتين من اسم المستفيد
+            const beneficiaryName = bNameRaw.split(/\s+/).slice(0, 2).join(' ');
+
+            // 2. تعديل تنسيق المبلغ ليكون (17,375.00 USD) بدلاً من (USD 17,375.00)
+            let transferAmt = amtRaw;
+            const amtParts = amtRaw.split(/\s+/);
+            if (amtParts.length >= 2) {
+                // لو القيمة جاية العملة الأول وبعدها الرقم (مثال: USD 17,375.00)
+                transferAmt = `${amtParts[1]} ${amtParts[0]}`;
+            } else {
+                // لو جاية رقم بس بدون عملة، بنضيف الـ USD احتياطي أو نتركها كالعادة
+                transferAmt = `${amtRaw} USD`;
+            }
+
+            // 3. اسم المؤسسة ثابت في الحساب (WEDAD AHMED)
+            const corpName = "WEDAD AHMED";
+
+            // 4. تكوين الاسم المبدئي المطلوب:
+            // INT - TRF - GANGFU AUTO - 17,375.00 USD - WEDAD AHMED - SABB
+            const finalName = `INT - TRF - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
+
+            // 5. نسخ الاسم للحافظة والضغط على زر تحميل السيستم المبدئي
+            copyText(finalName);
+            getEl('#payment_advice_download')?.click();
+            
+            flashBtn(btn, 'تم النسخ والمبدأي ✅');
+        });
+        
         // ================================================================
         // التحميل النهائي (SWIFT MT103)
         // ================================================================
