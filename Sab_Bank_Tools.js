@@ -194,6 +194,107 @@
         });
 
         // ================================================================
+        // أتمتة التحميل النهائي (SWIFT MT103)
+        // ================================================================
+        addBtn('تحميل النهائي MT103', '⚙️', async (btn) => {
+            try {
+                // 1. الضغط على رابط القائمة الجانبية لدخول صفحة البيانات
+                const navLink = document.querySelector("#appwrapper > div.bodywrapper > div.contentwrap > aside > nav > ul > li:nth-child(9) > a");
+                if (!navLink) { alert('⚠️ لم يتم العثور على رابط القائمة الجانبية'); return; }
+                navLink.click();
+        
+                // دالة مساعدة لانتظار ظهور العناصر في الصفحة
+                const waitForElement = (selector, timeout = 10000) => {
+                    return new Promise((resolve, reject) => {
+                        const startTime = Date.now();
+                        const interval = setInterval(() => {
+                            const el = document.querySelector(selector);
+                            if (el && el.offsetHeight > 0) {
+                                clearInterval(interval);
+                                resolve(el);
+                            } else if (Date.now() - startTime > timeout) {
+                                clearInterval(interval);
+                                reject(new Error(`Timeout waiting for: ${selector}`));
+                            }
+                        }, 300);
+                    });
+                };
+        
+                // 2. انتظار ظهور الجدول الرئيسي
+                await waitForElement("#data");
+        
+                // 3. انتظار ظهور رابط الحوالة الأول والضغط عليه
+                const firstRowLink = await waitForElement("#data > tbody > tr:nth-child(1) > td.sorting_1 > u > a");
+                firstRowLink.click();
+        
+                // 4. انتظار ظهور الموديل أو نافذة تفاصيل الحوالة (#print-me)
+                await waitForElement("#print-me");
+        
+                // دالة مساعدة للبحث عن القيمة بناءً على اسم الحقل داخل الجدول
+                const getModalDataByLabel = (labelName) => {
+                    const rows = document.querySelectorAll("#print-me table tbody tr");
+                    for (let row of rows) {
+                        const cells = row.querySelectorAll("td");
+                        if (cells.length >= 2) {
+                            const cellText = cells[0].textContent.trim();
+                            if (cellText.includes(labelName)) {
+                                return cells[1].textContent.trim();
+                            }
+                        }
+                    }
+                    return "";
+                };
+        
+                // 5. استخراج البيانات المطلوبة ديناميكياً لتجنب تغير ترتيب الصفوف
+                const corpNameRaw = getModalDataByLabel('Corporate ID');
+                const transferAmtRaw = getModalDataByLabel('Transfer Amount');
+                const beneficiaryNameRaw = getModalDataByLabel('Beneficiary Name');
+        
+                if (!corpNameRaw || !transferAmtRaw || !beneficiaryNameRaw) {
+                    alert('⚠️ فشل في استخراج بعض البيانات من تفاصيل الحوالة');
+                    return;
+                }
+        
+                // معالجة النصوص:
+                // أول كلمتين من اسم المؤسسة
+                const corpName = corpNameRaw.split(/\s+/).slice(0, 2).join(' ');
+                
+                // تعديل صيغة المبلغ من (USD 17,375.00) إلى (17,375.00 USD)
+                let amtParts = transferAmtRaw.split(/\s+/);
+                let transferAmt = transferAmtRaw; // احتياطي
+                if (amtParts.length >= 2) {
+                    transferAmt = `${amtParts[1]} ${amtParts[0]}`;
+                }
+        
+                // أول كلمتين من اسم المستفيد
+                const beneficiaryName = beneficiaryNameRaw.split(/\s+/).slice(0, 2).join(' ');
+        
+                // 6. تكوين الاسم النهائي
+                // MT103 - SWIFT - GANGFU AUTO - 17,375.00 USD - WEDAD AHMED - SABB
+                const finalName = `MT103 - SWIFT - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
+                
+                // نسخ الاسم إلى الحافظة
+                copyText(finalName);
+        
+                // 7. الضغط على زر تحميل SWIFT (حل مشكلة الـ ID المتغير)
+                // بنبحث عنه هنا من خلال الـ onclick اللي بيحتوي على دالة downloadSwiftCopy
+                const downloadBtn = document.querySelector("#print-me a[onclick*='downloadSwiftCopy']");
+                
+                if (downloadBtn) {
+                    downloadBtn.click();
+                    flashBtn(btn, 'تم النسخ والتحميل 🚀');
+                } else {
+                    alert('⚠️ لم يتم العثور على زر تحميل SWIFT Copy');
+                }
+        
+            } catch (error) {
+                console.error(error);
+                alert('❌ حدث خطأ أثناء التنفيذ التلقائي: ' + error.message);
+            }
+        });
+
+        
+        // ================================================================
         // الزر الثاني: ملء البيانات
         // ================================================================
         addBtn('ملء البيانات', '⚡', (btn) => {
