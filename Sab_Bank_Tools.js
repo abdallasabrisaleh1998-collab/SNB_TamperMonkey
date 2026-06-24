@@ -204,10 +204,10 @@
                 alert('⚠️ بيانات ناقصة، تأكد أنك في صفحة تفاصيل الحوالة المبدئية'); 
                 return; 
             }
-
+        
             // 1. استخراج أول كلمتين من اسم المستفيد
             const beneficiaryName = bNameRaw.split(/\s+/).slice(0, 2).join(' ');
-
+        
             // 2. تعديل تنسيق المبلغ ليكون (17,375.00 USD) بدلاً من (USD 17,375.00)
             let transferAmt = amtRaw;
             const amtParts = amtRaw.split(/\s+/);
@@ -218,14 +218,20 @@
                 // لو جاية رقم بس بدون عملة، بنضيف الـ USD احتياطي أو نتركها كالعادة
                 transferAmt = `${amtRaw} USD`;
             }
-
-            // 3. اسم المؤسسة ثابت في الحساب (WEDAD AHMED)
-            const corpName = "WEDAD AHMED";
-
+        
+            // 3. جلب النص من الـ Selector واستخراج أول كلمتين منه ديناميكياً
+            const corpElement = document.querySelector("#body > section > div.cust_tab > div > div > div > div.panel-body > table > tbody > tr:nth-child(2) > td:nth-child(2)");
+            let corpName = "WEDAD AHMED"; // قيمة احتياطية في حال لم يجد العنصر في الصفحة
+        
+            if (corpElement && corpElement.innerText.trim() !== "") {
+                // تنظيف النص واستخراج أول كلمتين
+                corpName = corpElement.innerText.trim().split(/\s+/).slice(0, 2).join(' ');
+            }
+        
             // 4. تكوين الاسم المبدئي المطلوب:
-            // INT - TRF - GANGFU AUTO - 17,375.00 USD - WEDAD AHMED - SABB
+            // INT - TRF - GANGFU AUTO - 17,375.00 USD - [أول كلمتين] - SABB
             const finalName = `INT - TRF - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
-
+        
             // 5. نسخ الاسم للحافظة والضغط على زر تحميل السيستم المبدئي
             copyText(finalName);
             getEl('#payment_advice_download')?.click();
