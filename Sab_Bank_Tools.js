@@ -212,24 +212,31 @@
             let transferAmt = amtRaw;
             const amtParts = amtRaw.split(/\s+/);
             if (amtParts.length >= 2) {
-                // لو القيمة جاية العملة الأول وبعدها الرقم (مثال: USD 17,375.00)
                 transferAmt = `${amtParts[1]} ${amtParts[0]}`;
             } else {
-                // لو جاية رقم بس بدون عملة، بنضيف الـ USD احتياطي أو نتركها كالعادة
                 transferAmt = `${amtRaw} USD`;
             }
         
             // 3. جلب النص من الـ Selector واستخراج أول كلمتين منه ديناميكياً
             const corpElement = document.querySelector("#body > section > div.cust_tab > div > div > div > div.panel-body > table > tbody > tr:nth-child(2) > td:nth-child(2)");
-            let corpName = "WEDAD AHMED"; // قيمة احتياطية في حال لم يجد العنصر في الصفحة
+            
+            let corpName = "";
         
-            if (corpElement && corpElement.innerText.trim() !== "") {
-                // تنظيف النص واستخراج أول كلمتين
-                corpName = corpElement.innerText.trim().split(/\s+/).slice(0, 2).join(' ');
+            // محاولة القراءة من الـ Selector الخاص بك
+            if (corpElement) {
+                const textFound = (corpElement.innerText || corpElement.textContent || "").trim();
+                if (textFound !== "") {
+                    corpName = textFound.split(/\s+/).slice(0, 2).join(' ');
+                }
+            }
+        
+            // إذا فشل الـ Selector تماماً ولم يجد نصاً، سنظهر تنبيه لنعرف المشكلة أين
+            if (!corpName) {
+                alert("⚠️ لم يتمكن الكود من العثور على اسم الحساب من الجدول! تأكد من وجود العنصر في الصفحة.");
+                corpName = "WEDAD AHMED"; // قيمة احتياطية مؤقتة حتى لا يخرب الاسم بالكامل
             }
         
             // 4. تكوين الاسم المبدئي المطلوب:
-            // INT - TRF - GANGFU AUTO - 17,375.00 USD - [أول كلمتين] - SABB
             const finalName = `INT - TRF - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
         
             // 5. نسخ الاسم للحافظة والضغط على زر تحميل السيستم المبدئي
