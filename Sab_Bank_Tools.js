@@ -1,4 +1,4 @@
-// SAB EL AWL SMART PANEL - EDITED
+// SAB EL AWL SMART PANEL
 (function() {
     'use strict';
 
