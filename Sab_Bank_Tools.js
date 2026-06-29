@@ -208,7 +208,7 @@
             // 1. استخراج أول كلمتين من اسم المستفيد
             const beneficiaryName = bNameRaw.split(/\s+/).slice(0, 2).join(' ');
         
-            // 2. تعديل تنسيق المبلغ ليكون (17,375.00 USD) بدلاً من (USD 17,375.00)
+            // 2. تعديل تنسيق المبلغ
             let transferAmt = amtRaw;
             const amtParts = amtRaw.split(/\s+/);
             if (amtParts.length >= 2) {
@@ -217,53 +217,28 @@
                 transferAmt = `${amtRaw} USD`;
             }
         
-            // 3. جلب اسم الشركة بطرق متعددة للضمان
+            // 3. جلب اسم الشركة
+            const corpElement = document.querySelector("section div.cust_tab .panel-body table tbody tr:nth-child(2) td:nth-child(2)");
+            
             let corpName = "";
-        
-            // الطريقة 1: selector مختصر أكثر مرونة
-            const selectors = [
-                ".panel-body table tbody tr:nth-child(2) td:nth-child(2)",
-                ".panel-body table tbody tr:nth-child(1) td:nth-child(2)",
-                ".panel-body table tbody tr td:nth-child(2)",
-                ".cust_tab .panel-body table tbody tr:nth-child(2) td:nth-child(2)",
-            ];
-        
-            for (const sel of selectors) {
-                const el = document.querySelector(sel);
-                if (el) {
-                    const txt = (el.innerText || el.textContent || "").trim();
-                    if (txt.length > 2 && !/^\d/.test(txt)) {
-                        corpName = txt.split(/\s+/).slice(0, 2).join(' ');
-                        break;
-                    }
+            if (corpElement) {
+                const textFound = (corpElement.innerText || corpElement.textContent || "").trim();
+                if (textFound !== "") {
+                    corpName = textFound.split(/\s+/).slice(0, 2).join(' ');
                 }
             }
         
-            // الطريقة 2: مسح كل tds في panel-body كـ fallback
             if (!corpName) {
-                const allTds = document.querySelectorAll(".panel-body table tbody tr td");
-                for (const td of allTds) {
-                    const txt = (td.innerText || td.textContent || "").trim();
-                    if (txt.length > 2 && !/^\d/.test(txt) && /[A-Za-z]/.test(txt)) {
-                        corpName = txt.split(/\s+/).slice(0, 2).join(' ');
-                        break;
-                    }
-                }
-            }
-        
-            // إذا فشلت كل الطرق
-            if (!corpName) {
-                alert("⚠️ لم يتمكن الكود من العثور على اسم الحساب!\n\nافتح الـ Console وشغّل:\ndocument.querySelectorAll('.panel-body table tbody tr td').forEach((td,i)=>console.log(i, td.textContent.trim()))");
+                alert("⚠️ لم يتمكن الكود من العثور على اسم الحساب!");
                 return;
             }
         
-            // 4. تكوين الاسم المبدئي المطلوب
+            // 4. تكوين الاسم النهائي
             const finalName = `INT - TRF - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
         
-            // 5. نسخ الاسم للحافظة والضغط على زر تحميل السيستم المبدئي
+            // 5. نسخ وتحميل
             copyText(finalName);
             getEl('#payment_advice_download')?.click();
-            
             flashBtn(btn, 'تم النسخ والمبدأي ✅');
         });
                 
