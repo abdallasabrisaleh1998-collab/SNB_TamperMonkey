@@ -217,26 +217,47 @@
                 transferAmt = `${amtRaw} USD`;
             }
         
-            // 3. جلب النص من الـ Selector واستخراج أول كلمتين منه ديناميكياً
-            const corpElement = document.querySelector("#body > section > div.cust_tab > div > div > div > div.panel-body > table > tbody > tr:nth-child(2) > td:nth-child(2)");
-            
+            // 3. جلب اسم الشركة بطرق متعددة للضمان
             let corpName = "";
         
-            // محاولة القراءة من الـ Selector الخاص بك
-            if (corpElement) {
-                const textFound = (corpElement.innerText || corpElement.textContent || "").trim();
-                if (textFound !== "") {
-                    corpName = textFound.split(/\s+/).slice(0, 2).join(' ');
+            // الطريقة 1: selector مختصر أكثر مرونة
+            const selectors = [
+                ".panel-body table tbody tr:nth-child(2) td:nth-child(2)",
+                ".panel-body table tbody tr:nth-child(1) td:nth-child(2)",
+                ".panel-body table tbody tr td:nth-child(2)",
+                ".cust_tab .panel-body table tbody tr:nth-child(2) td:nth-child(2)",
+            ];
+        
+            for (const sel of selectors) {
+                const el = document.querySelector(sel);
+                if (el) {
+                    const txt = (el.innerText || el.textContent || "").trim();
+                    if (txt.length > 2 && !/^\d/.test(txt)) {
+                        corpName = txt.split(/\s+/).slice(0, 2).join(' ');
+                        break;
+                    }
                 }
             }
         
-            // إذا فشل الـ Selector تماماً ولم يجد نصاً، سنظهر تنبيه لنعرف المشكلة أين
+            // الطريقة 2: مسح كل tds في panel-body كـ fallback
             if (!corpName) {
-                alert("⚠️ لم يتمكن الكود من العثور على اسم الحساب من الجدول! تأكد من وجود العنصر في الصفحة.");
-                corpName = "WEDAD AHMED"; // قيمة احتياطية مؤقتة حتى لا يخرب الاسم بالكامل
+                const allTds = document.querySelectorAll(".panel-body table tbody tr td");
+                for (const td of allTds) {
+                    const txt = (td.innerText || td.textContent || "").trim();
+                    if (txt.length > 2 && !/^\d/.test(txt) && /[A-Za-z]/.test(txt)) {
+                        corpName = txt.split(/\s+/).slice(0, 2).join(' ');
+                        break;
+                    }
+                }
             }
         
-            // 4. تكوين الاسم المبدئي المطلوب:
+            // إذا فشلت كل الطرق
+            if (!corpName) {
+                alert("⚠️ لم يتمكن الكود من العثور على اسم الحساب!\n\nافتح الـ Console وشغّل:\ndocument.querySelectorAll('.panel-body table tbody tr td').forEach((td,i)=>console.log(i, td.textContent.trim()))");
+                return;
+            }
+        
+            // 4. تكوين الاسم المبدئي المطلوب
             const finalName = `INT - TRF - ${beneficiaryName} - ${transferAmt} - ${corpName} - SABB`;
         
             // 5. نسخ الاسم للحافظة والضغط على زر تحميل السيستم المبدئي
@@ -245,7 +266,7 @@
             
             flashBtn(btn, 'تم النسخ والمبدأي ✅');
         });
-        
+                
         // ================================================================
         // التحميل النهائي (SWIFT MT103)
         // ================================================================
