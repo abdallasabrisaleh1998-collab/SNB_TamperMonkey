@@ -217,8 +217,9 @@
                 transferAmt = `${amtRaw} USD`;
             }
         
-            // 3. جلب اسم الشركة
-            const corpElement = document.querySelector("section div.cust_tab .panel-body table tbody tr:nth-child(2) td:nth-child(2)");
+            // 3. جلب اسم الشركة من جوه الـ iframe
+            const iframeDoc = document.getElementById('icanvas')?.contentDocument;
+            const corpElement = iframeDoc?.querySelector(".panel-body table tbody tr:nth-child(2) td:nth-child(2)");
             
             let corpName = "";
             if (corpElement) {
