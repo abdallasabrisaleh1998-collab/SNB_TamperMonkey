@@ -394,7 +394,7 @@
                 flashBtn(btn, 'بدء التنشيط ⚡');
             }
         });
-
+/*
         // ================================================================
         // الزر الرابع: تقسيم العنوان
         // ================================================================
@@ -473,7 +473,140 @@
             });
         });
     };
+*/
 
+        // ================================================================
+        // الزر الرابع: تقسيم العنوان
+        // ================================================================
+        const dividerSection = document.createElement('div');
+        dividerSection.style.cssText = 'padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;';
+        dividerSection.innerHTML = `
+            <div class="sab-divider">تقسيم العنوان</div>
+            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..."
+                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px;
+                       font-size:12px; resize:none; height:60px; direction:ltr; box-sizing:border-box;
+                       font-family:Arial; outline:none;"></textarea>
+            <button id="sab-split-btn" class="tool-btn">
+                <span>تقسيم العنوان</span><span>✂️</span>
+            </button>
+            <div id="sab-split-result" style="display:flex; flex-direction:column; gap:5px;"></div>
+        `;
+        document.getElementById('sab-body').appendChild(dividerSection);
+
+        // دالة تحديث حقل الإنبت وتشغيل الإيفنتات بتاعته (عشان أي فريمورك زي React/Vue يحس بالتغيير)
+        function setInputValue(el, value) {
+            const proto = Object.getPrototypeOf(el);
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) {
+                setter.call(el, value);
+            } else {
+                el.value = value;
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        document.getElementById('sab-split-btn').addEventListener('click', () => {
+            const raw = document.getElementById('sab-address-input').value.trim();
+            if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
+        
+            const words = raw.split(/\s+/);
+            const lines = [];
+            let current = '';
+        
+            for (const word of words) {
+                const test = current ? `${current} ${word}` : word;
+                if (lines.length < 1) {
+                    // السطر الأول: احترم الـ 35
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        lines.push(current);
+                        current = word.slice(0, 35);
+                    }
+                } else {
+                    // السطر التاني: كمّل الكلمات طول ما في مساحة
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        break; // امتلأ السطر التاني
+                    }
+                }
+            }
+            if (current) lines.push(current.slice(0, 35));
+        
+            const resultDiv = document.getElementById('sab-split-result');
+            resultDiv.innerHTML = '';
+        
+            lines.forEach((line, i) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:5px;';
+                row.innerHTML = `
+                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px;
+                                padding:6px 8px; font-size:11px; direction:ltr; font-family:Arial;
+                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                         title="${line}">${line}</div>
+                    <button class="sab-copy-line" data-val="${line}"
+                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px;
+                               padding:6px 10px; cursor:pointer; font-size:11px; white-space:nowrap;">
+                        نسخ ${i + 1}
+                    </button>
+                `;
+                resultDiv.appendChild(row);
+            });
+        
+            resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    copyText(btn.getAttribute('data-val'));
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '✅';
+                    btn.style.background = '#28a745';
+                    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#e11d1d'; }, 1500);
+                });
+            });
+
+            // تخزين آخر نتيجة تقسيم عشان زرار الإدخال يستخدمها
+            dividerSection._lastLines = lines;
+        });
+
+        // ================================================================
+        // الزر الجديد: إدخال ال 2 صفوف مباشرة في الحقول
+        // ================================================================
+        const insertRow = document.createElement('div');
+        insertRow.style.cssText = 'display:flex; flex-direction:column; gap:5px;';
+        insertRow.innerHTML = `
+            <button id="sab-insert-btn" class="tool-btn">
+                <span>ادخال ال 2 صفوف</span><span>📥</span>
+            </button>
+        `;
+        dividerSection.appendChild(insertRow);
+
+        document.getElementById('sab-insert-btn').addEventListener('click', () => {
+            const lines = dividerSection._lastLines;
+            if (!lines || lines.length === 0) {
+                alert('⚠️ اعمل تقسيم العنوان الأول');
+                return;
+            }
+
+            const field1 = document.querySelector('#beneAddress1');
+            const field2 = document.querySelector('#beneAddress2');
+
+            if (!field1 || !field2) {
+                alert('⚠️ مفيش حقول beneAddress1 / beneAddress2 في الصفحة');
+                return;
+            }
+
+            setInputValue(field1, lines[0] || '');
+            setInputValue(field2, lines[1] || '');
+
+            const btn = document.getElementById('sab-insert-btn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span>تم الإدخال ✅</span>';
+            setTimeout(() => { btn.innerHTML = orig; }, 1500);
+        });
+    };
+
+        
     buildSidebar();
     if (!window.__SAB_SIDEBAR_INTERVAL__) {
         window.__SAB_SIDEBAR_INTERVAL__ = true;
