@@ -701,6 +701,269 @@
                 });
             }, true); // true = capture phase، عشان نمسك الكليك قبل أي هاندلر تاني على نفس الزرار
         }
+
+        // ================================================================
+        // الزر الجديد: تحميل كشف حساب
+        // ================================================================
+
+        // استنى وقت معين (بالميلي ثانية)
+        const sabSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+        // دور على عنصر لحد ما يظهر (بولينج) - يرجع العنصر أو null لو خلص الوقت
+        const sabWaitForElement = async (selector, timeout = 15000, interval = 250) => {
+            const start = Date.now();
+            while (Date.now() - start < timeout) {
+                const el = getEl(selector);
+                if (el) return el;
+                await sabSleep(interval);
+            }
+            return null;
+        };
+
+        // حاول تستنى أي اسبينر/لودر معروف يختفي. السيلكتورات دي تخمين شائع،
+        // لو عندك سيلكتور حقيقي للاسبينر ابعتهولي عشان أظبطه بدقة أكتر.
+        const SAB_SPINNER_SELECTORS = ['.blockUI', '.loading-spinner', '.ws-loading', '.spinner', '.loader', '.ajax-loader'];
+        const sabWaitForSpinnerGone = async (timeout = 15000, interval = 200) => {
+            const start = Date.now();
+            while (Date.now() - start < timeout) {
+                const doc = getIframeDoc() || document;
+                const visibleSpinner = SAB_SPINNER_SELECTORS
+                    .map((s) => doc.querySelector(s))
+                    .find((el) => el && el.offsetParent !== null);
+                if (!visibleSpinner) return true;
+                await sabSleep(interval);
+            }
+            return false; // خلص الوقت ومكانش فيه ضمان إن الاسبينر اختفى
+        };
+
+        // اختيار قيمة في select من نوع chosen (single) لما يكون فيه اختيار واحد بس متاح
+        const selectSingleChosenOption = (doc, selectId) => {
+            const selectEl = doc?.querySelector(`#${selectId}`);
+            if (!selectEl) return false;
+            const opt = Array.from(selectEl.options).find((o) => o.value && o.value.trim() !== '');
+            if (!opt) return false;
+            return selectChosenOption(doc, selectId, opt.value);
+        };
+
+        // اختيار عنصر (أو أكتر) في multi-select من نوع chosen بناءً على نص فيه
+        const selectChosenMultiByText = (doc, selectId, matchText) => {
+            const selectEl = doc?.querySelector(`#${selectId}`);
+            if (!selectEl) return false;
+
+            const opt = Array.from(selectEl.options).find((o) =>
+                (o.textContent || '').toUpperCase().includes(matchText.toUpperCase())
+            );
+            if (!opt) return false;
+
+            opt.selected = true;
+            selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+
+            try {
+                const iWin = getIframeDoc()?.defaultView;
+                if (iWin?.$) iWin.$(`#${selectId}`).trigger('chosen:updated').trigger('change');
+            } catch (e) {}
+
+            return true;
+        };
+
+        // تعبئة حقل تاريخ (input عادي بس بتصميم مخصص) وتشغيل الأحداث بتاعته
+        const setDateValue = (el, value) => {
+            if (!el) return false;
+            const proto = Object.getPrototypeOf(el);
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) setter.call(el, value); else el.value = value;
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+            el.dispatchEvent(new Event('blur', { bubbles: true }));
+            return true;
+        };
+
+        // تنسيق تاريخ لصيغة DD/MM/YYYY - عدّل الصيغة هنا لو النظام بيستخدم صيغة مختلفة
+        const formatDateDMY = (date) => {
+            const dd = String(date.getDate()).padStart(2, '0');
+            const mm = String(date.getMonth() + 1).padStart(2, '0');
+            const yyyy = date.getFullYear();
+            return `${dd}/${mm}/${yyyy}`;
+        };
+
+        // نافذة إدخال التاريخ (من / الى) قبل بدء التحميل
+        const showStatementDateModal = (onConfirm) => {
+            const today = new Date();
+            const threeDaysAgo = new Date();
+            threeDaysAgo.setDate(today.getDate() - 3);
+
+            const defaultFrom = formatDateDMY(threeDaysAgo);
+            const defaultTo = formatDateDMY(today);
+
+            const existing = document.getElementById('sab-statement-modal-overlay');
+            if (existing) existing.remove();
+
+            const overlay = document.createElement('div');
+            overlay.id = 'sab-statement-modal-overlay';
+            overlay.style.cssText = `
+                position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:999999;
+                display:flex; align-items:center; justify-content:center;
+                font-family:Arial;
+            `;
+
+            overlay.innerHTML = `
+                <div style="background:#fff; border-radius:10px; padding:20px; max-width:340px;
+                            width:90%; direction:rtl; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+                    <h3 style="margin:0 0 15px 0; font-size:16px; color:#333; text-align:center;">
+                        تحميل كشف حساب
+                    </h3>
+
+                    <div style="margin-bottom:10px;">
+                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">من</label>
+                        <input id="sab-stmt-from" type="text" value="${defaultFrom}"
+                            style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;
+                                   font-size:13px; direction:ltr; box-sizing:border-box;">
+                    </div>
+
+                    <div style="margin-bottom:15px;">
+                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">الى</label>
+                        <input id="sab-stmt-to" type="text" value="${defaultTo}"
+                            style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;
+                                   font-size:13px; direction:ltr; box-sizing:border-box;">
+                    </div>
+
+                    <div style="display:flex; gap:10px;">
+                        <button id="sab-stmt-cancel-btn"
+                            style="flex:1; padding:10px; border:1px solid #ccc; background:#f5f5f5;
+                                   border-radius:8px; cursor:pointer; font-size:13px;">
+                            إلغاء
+                        </button>
+                        <button id="sab-stmt-ok-btn"
+                            style="flex:1; padding:10px; border:none; background:#e11d1d; color:#fff;
+                                   border-radius:8px; cursor:pointer; font-size:13px;">
+                            أوك
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+
+            document.getElementById('sab-stmt-cancel-btn').addEventListener('click', () => overlay.remove());
+
+            document.getElementById('sab-stmt-ok-btn').addEventListener('click', () => {
+                const fromVal = document.getElementById('sab-stmt-from').value.trim();
+                const toVal = document.getElementById('sab-stmt-to').value.trim();
+                overlay.remove();
+                onConfirm(fromVal, toVal);
+            });
+        };
+
+        // الخطوات الفعلية لتحميل كشف الحساب (async عشان نقدر نستنى بين كل خطوة)
+        const runDownloadStatement = async (fromDate, toDate, btn) => {
+            try {
+                console.log('▶️ [1] بدء العملية - الريفريش الأول');
+                const refreshBtn = getEl('#appwrapper > header > a');
+                if (!refreshBtn) { console.warn('❌ متلاقيش زرار الريفريش'); return; }
+                refreshBtn.click();
+
+                console.log('⏳ [1] مستني الصفحة تحمل بعد الريفريش...');
+                await sabWaitForSpinnerGone(15000);
+                await sabSleep(1500); // هامش أمان إضافي
+                console.log('✅ [1] الريفريش خلص');
+
+                console.log('▶️ [2] مستني ظهور #w-accounts');
+                const wAccounts = await sabWaitForElement('#w-accounts > a', 15000);
+                if (!wAccounts) { console.warn('❌ متلاقيتش #w-accounts > a'); return; }
+                wAccounts.click();
+                console.log('✅ [2] تم الضغط على w-accounts');
+
+                await sabSleep(1000);
+
+                console.log('▶️ [3] الضغط على عنصر المنيو (li:nth-child(9))');
+                const menuItem = await sabWaitForElement(
+                    '#appwrapper > div.bodywrapper > div.contentwrap > aside > nav > ul > li:nth-child(9) > a',
+                    15000
+                );
+                if (!menuItem) { console.warn('❌ متلاقيتش عنصر المنيو رقم 9'); return; }
+                menuItem.click();
+                console.log('✅ [3] تم الضغط على المنيو - الدروب داون المفروض ظهر');
+
+                console.log('▶️ [4] مستني ظهور request_menu new_blink');
+                const requestMenuItem = await sabWaitForElement('#request_menu > li.new_blink > a', 10000);
+                if (!requestMenuItem) { console.warn('❌ متلاقيتش #request_menu > li.new_blink > a'); return; }
+                requestMenuItem.click();
+                console.log('✅ [4] تم الضغط - مستني تحميل الفورم');
+
+                await sabSleep(1500);
+
+                console.log('▶️ [5] مستني ظهور select نوع المستند (productType)');
+                const productTypeEl = await sabWaitForElement('#productType', 15000);
+                if (!productTypeEl) { console.warn('❌ متلاقيتش #productType'); return; }
+
+                const doc = productTypeEl.ownerDocument;
+                selectChosenOption(doc, 'productType', '3'); // Account Statement
+                console.log('✅ [5] تم اختيار Account Statement - مستني الفورم يحمل الحقول');
+
+                await sabSleep(1500);
+
+                console.log('▶️ [6] مستني ظهور select الشركة (corporate)');
+                const corporateEl = await sabWaitForElement('#corporate', 15000);
+                if (!corporateEl) { console.warn('❌ متلاقيتش #corporate'); return; }
+
+                const gotCorporate = selectSingleChosenOption(doc, 'corporate');
+                if (!gotCorporate) { console.warn('❌ متلاقيتش خيار متاح جوه corporate'); return; }
+                console.log('✅ [6] تم اختيار الشركة - مستني الحسابات تحمل');
+
+                await sabSleep(1800);
+
+                console.log('▶️ [7] مستني ظهور خيارات الحساب (account) وفيها SAR');
+                let accountFound = false;
+                const accountWaitStart = Date.now();
+                while (Date.now() - accountWaitStart < 15000) {
+                    const accountEl = doc.querySelector('#account');
+                    if (accountEl && Array.from(accountEl.options).some((o) => (o.textContent || '').toUpperCase().includes('SAR'))) {
+                        accountFound = true;
+                        break;
+                    }
+                    await sabSleep(300);
+                }
+                if (!accountFound) { console.warn('❌ متلاقيتش حساب فيه SAR'); return; }
+
+                selectChosenMultiByText(doc, 'account', 'SAR');
+                console.log('✅ [7] تم اختيار الحساب اللي فيه SAR');
+
+                await sabSleep(800);
+
+                console.log('▶️ [8] تعبئة التاريخ من والى');
+                const startDateEl = doc.querySelector('input.startdate') || getEl('input.startdate');
+                const endDateEl = doc.querySelector('input.enddate') || getEl('input.enddate');
+
+                if (!startDateEl || !endDateEl) {
+                    console.warn('❌ متلاقيتش حقول التاريخ (startdate / enddate)');
+                    return;
+                }
+
+                setDateValue(startDateEl, fromDate);
+                setDateValue(endDateEl, toDate);
+                console.log(`✅ [8] تم تعبئة التاريخ: من ${fromDate} الى ${toDate}`);
+
+                await sabSleep(800);
+
+                console.log('▶️ [9] الضغط على زرار Submit');
+                const submitStatementBtn = doc.querySelector('#btnSubmit') || getEl('#btnSubmit');
+                if (!submitStatementBtn) { console.warn('❌ متلاقيتش #btnSubmit'); return; }
+                submitStatementBtn.click();
+                console.log('🎉 [9] تم الضغط على Submit - العملية خلصت (تحقق من التحميل)');
+
+                if (btn) flashBtn(btn, 'تم إرسال الطلب ✅');
+            } catch (err) {
+                console.error('🔥 حصل خطأ غير متوقع أثناء التنفيذ:', err);
+                alert('⚠️ حصل خطأ أثناء تنفيذ الخطوات، افتح الـ Console للتفاصيل.');
+            }
+        };
+
+        addBtn('تحميل كشف حساب', '📄', (btn) => {
+            showStatementDateModal((fromDate, toDate) => {
+                runDownloadStatement(fromDate, toDate, btn);
+            });
+        });
     };
 
         
