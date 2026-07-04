@@ -639,7 +639,6 @@
     };
 
     */
-
         // ================================================================
         // الزر الرابع: تقسيم العنوان
         // ================================================================
@@ -899,11 +898,35 @@
             });
         }
 
-        // XPath الخاص بزرار الـ Submit المطلوب مراقبته فقط
+        // XPath الخاص بزرار الـ Submit المطلوب مراقبته فقط (احتياطي لو الـ ID اتغير يومًا ما)
         const submitBtnXPath = '/html/body/section/div[1]/div/div/div/form/div/div[1]/div[4]/div/div[3]/button[2]';
-        const submitBtn = findElementByXPathDeep(submitBtnXPath);
 
-        if (submitBtn) {
+        // بنحاول نلاقي الزرار كذا مرة (polling) لحد ما الـ iframe يحمل محتواه فعليًا
+        let submitBtnAttempts = 0;
+        const submitBtnMaxAttempts = 40; // 40 محاولة * 300ms = 12 ثانية تقريبًا
+        const submitBtnInterval = setInterval(() => {
+            submitBtnAttempts++;
+
+            // أولوية للبحث بالـ ID، ولو مالقهوش نجرب الـ XPath
+            let submitBtn = findElementDeep('#btn-click');
+            if (!submitBtn) {
+                submitBtn = findElementByXPathDeep(submitBtnXPath);
+            }
+
+            if (submitBtn) {
+                clearInterval(submitBtnInterval);
+                attachCurrencyCheckToButton(submitBtn);
+            } else if (submitBtnAttempts >= submitBtnMaxAttempts) {
+                clearInterval(submitBtnInterval);
+                console.warn('sab-tool: مالقتش زرار #btn-click بعد', submitBtnMaxAttempts, 'محاولة');
+            }
+        }, 300);
+
+        function attachCurrencyCheckToButton(submitBtn) {
+            // منع ربط نفس الحدث أكتر من مرة على نفس الزرار
+            if (submitBtn.dataset.sabCurrencyCheckAttached === '1') return;
+            submitBtn.dataset.sabCurrencyCheckAttached = '1';
+
             let bypassCurrencyCheck = false;
 
             submitBtn.addEventListener('click', function (e) {
@@ -937,7 +960,6 @@
             }, true); // true = capture phase، عشان نمسك الكليك قبل أي هاندلر تاني على نفس الزرار
         }
     };
-    
 
         
     buildSidebar();
