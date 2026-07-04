@@ -493,6 +493,37 @@
         `;
         document.getElementById('sab-body').appendChild(dividerSection);
 
+        // دالة بتدور على عنصر بالـ selector في الصفحة الرئيسية، ولو مالقتوش
+        // بتدور جوه كل الـ iframes الموجودة (زي iframe#icanvas) بشكل recursive
+        function findElementDeep(selector, rootDoc) {
+            rootDoc = rootDoc || document;
+
+            // 1) دور في الدوكيومنت الحالي
+            let el = rootDoc.querySelector(selector);
+            if (el) return el;
+
+            // 2) دور جوه كل الـ iframes في الدوكيومنت ده
+            const iframes = rootDoc.querySelectorAll('iframe');
+            for (const frame of iframes) {
+                try {
+                    const innerDoc = frame.contentDocument || frame.contentWindow?.document;
+                    if (!innerDoc) continue;
+
+                    el = innerDoc.querySelector(selector);
+                    if (el) return el;
+
+                    // لو فيه iframe جوه iframe (تداخل)
+                    const nested = findElementDeep(selector, innerDoc);
+                    if (nested) return nested;
+                } catch (e) {
+                    // cross-origin أو أي مشكلة وصول - تجاهل واستمر
+                    continue;
+                }
+            }
+
+            return null;
+        }
+
         // دالة تحديث حقل الإنبت وتشغيل الإيفنتات بتاعته (عشان أي فريمورك زي React/Vue يحس بالتغيير)
         function setInputValue(el, value) {
             const proto = Object.getPrototypeOf(el);
@@ -588,11 +619,11 @@
                 return;
             }
 
-            const field1 = document.querySelector('#beneAddress1');
-            const field2 = document.querySelector('#beneAddress2');
+            const field1 = findElementDeep('#beneAddress1');
+            const field2 = findElementDeep('#beneAddress2');
 
             if (!field1 || !field2) {
-                alert('⚠️ مفيش حقول beneAddress1 / beneAddress2 في الصفحة');
+                alert('⚠️ مفيش حقول beneAddress1 / beneAddress2 (دورت في الصفحة وجوه الـ iframe)');
                 return;
             }
 
