@@ -475,6 +475,7 @@
     };
 */
 
+/*        
         // ================================================================
         // الزر الرابع: تقسيم العنوان
         // ================================================================
@@ -636,6 +637,307 @@
             setTimeout(() => { btn.innerHTML = orig; }, 1500);
         });
     };
+
+    */
+
+        // ================================================================
+        // الزر الرابع: تقسيم العنوان
+        // ================================================================
+        const dividerSection = document.createElement('div');
+        dividerSection.style.cssText = 'padding: 6px 8px; display: flex; flex-direction: column; gap: 6px;';
+        dividerSection.innerHTML = `
+            <div class="sab-divider">تقسيم العنوان</div>
+            <textarea id="sab-address-input" placeholder="اكتب العنوان هنا..."
+                style="width:100%; padding:8px; border:1px solid #e5e5e5; border-radius:8px;
+                       font-size:12px; resize:none; height:60px; direction:ltr; box-sizing:border-box;
+                       font-family:Arial; outline:none;"></textarea>
+            <button id="sab-split-btn" class="tool-btn">
+                <span>تقسيم العنوان</span><span>✂️</span>
+            </button>
+            <div id="sab-split-result" style="display:flex; flex-direction:column; gap:5px;"></div>
+        `;
+        document.getElementById('sab-body').appendChild(dividerSection);
+
+        // دالة بتدور على عنصر بالـ selector في الصفحة الرئيسية، ولو مالقتوش
+        // بتدور جوه كل الـ iframes الموجودة (زي iframe#icanvas) بشكل recursive
+        function findElementDeep(selector, rootDoc) {
+            rootDoc = rootDoc || document;
+
+            // 1) دور في الدوكيومنت الحالي
+            let el = rootDoc.querySelector(selector);
+            if (el) return el;
+
+            // 2) دور جوه كل الـ iframes في الدوكيومنت ده
+            const iframes = rootDoc.querySelectorAll('iframe');
+            for (const frame of iframes) {
+                try {
+                    const innerDoc = frame.contentDocument || frame.contentWindow?.document;
+                    if (!innerDoc) continue;
+
+                    el = innerDoc.querySelector(selector);
+                    if (el) return el;
+
+                    // لو فيه iframe جوه iframe (تداخل)
+                    const nested = findElementDeep(selector, innerDoc);
+                    if (nested) return nested;
+                } catch (e) {
+                    // cross-origin أو أي مشكلة وصول - تجاهل واستمر
+                    continue;
+                }
+            }
+
+            return null;
+        }
+
+        // دالة تحديث حقل الإنبت وتشغيل الإيفنتات بتاعته (عشان أي فريمورك زي React/Vue يحس بالتغيير)
+        function setInputValue(el, value) {
+            const proto = Object.getPrototypeOf(el);
+            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+            if (setter) {
+                setter.call(el, value);
+            } else {
+                el.value = value;
+            }
+            el.dispatchEvent(new Event('input', { bubbles: true }));
+            el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        document.getElementById('sab-split-btn').addEventListener('click', () => {
+            const raw = document.getElementById('sab-address-input').value.trim();
+            if (!raw) { alert('⚠️ اكتب العنوان الأول'); return; }
+        
+            const words = raw.split(/\s+/);
+            const lines = [];
+            let current = '';
+        
+            for (const word of words) {
+                const test = current ? `${current} ${word}` : word;
+                if (lines.length < 1) {
+                    // السطر الأول: احترم الـ 35
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        lines.push(current);
+                        current = word.slice(0, 35);
+                    }
+                } else {
+                    // السطر التاني: كمّل الكلمات طول ما في مساحة
+                    if (test.length <= 35) {
+                        current = test;
+                    } else {
+                        break; // امتلأ السطر التاني
+                    }
+                }
+            }
+            if (current) lines.push(current.slice(0, 35));
+        
+            const resultDiv = document.getElementById('sab-split-result');
+            resultDiv.innerHTML = '';
+        
+            lines.forEach((line, i) => {
+                const row = document.createElement('div');
+                row.style.cssText = 'display:flex; align-items:center; gap:5px;';
+                row.innerHTML = `
+                    <div style="flex:1; background:#f5f5f5; border:1px solid #ddd; border-radius:6px;
+                                padding:6px 8px; font-size:11px; direction:ltr; font-family:Arial;
+                                white-space:nowrap; overflow:hidden; text-overflow:ellipsis;"
+                         title="${line}">${line}</div>
+                    <button class="sab-copy-line" data-val="${line}"
+                        style="background:#e11d1d; color:#fff; border:none; border-radius:6px;
+                               padding:6px 10px; cursor:pointer; font-size:11px; white-space:nowrap;">
+                        نسخ ${i + 1}
+                    </button>
+                `;
+                resultDiv.appendChild(row);
+            });
+        
+            resultDiv.querySelectorAll('.sab-copy-line').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    copyText(btn.getAttribute('data-val'));
+                    const orig = btn.innerHTML;
+                    btn.innerHTML = '✅';
+                    btn.style.background = '#28a745';
+                    setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#e11d1d'; }, 1500);
+                });
+            });
+
+            // تخزين آخر نتيجة تقسيم عشان زرار الإدخال يستخدمها
+            dividerSection._lastLines = lines;
+        });
+
+        // ================================================================
+        // الزر الجديد: إدخال ال 2 صفوف مباشرة في الحقول
+        // ================================================================
+        const insertRow = document.createElement('div');
+        insertRow.style.cssText = 'display:flex; flex-direction:column; gap:5px;';
+        insertRow.innerHTML = `
+            <button id="sab-insert-btn" class="tool-btn">
+                <span>ادخال ال 2 صفوف</span><span>📥</span>
+            </button>
+        `;
+        dividerSection.appendChild(insertRow);
+
+        document.getElementById('sab-insert-btn').addEventListener('click', () => {
+            const lines = dividerSection._lastLines;
+            if (!lines || lines.length === 0) {
+                alert('⚠️ اعمل تقسيم العنوان الأول');
+                return;
+            }
+
+            const field1 = findElementDeep('#beneAddress1');
+            const field2 = findElementDeep('#beneAddress2');
+
+            if (!field1 || !field2) {
+                alert('⚠️ مفيش حقول beneAddress1 / beneAddress2 (دورت في الصفحة وجوه الـ iframe)');
+                return;
+            }
+
+            setInputValue(field1, lines[0] || '');
+            setInputValue(field2, lines[1] || '');
+
+            const btn = document.getElementById('sab-insert-btn');
+            const orig = btn.innerHTML;
+            btn.innerHTML = '<span>تم الإدخال ✅</span>';
+            setTimeout(() => { btn.innerHTML = orig; }, 1500);
+        });
+
+        // ================================================================
+        // مراقبة زرار الـ Submit المحدد: تنبيه لو العملة مش USD
+        // ================================================================
+
+        // دالة بتقيّم XPath على دوكيومنت معين وترجع أول عنصر متطابق
+        function evaluateXPath(xpath, doc) {
+            try {
+                const result = doc.evaluate(
+                    xpath, doc, null,
+                    XPathResult.FIRST_ORDERED_NODE_TYPE, null
+                );
+                return result.singleNodeValue;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // دالة بتدور على عنصر بالـ XPath في الصفحة الرئيسية، ولو مالقتوش
+        // بتدور جوه كل الـ iframes (زي icanvas) بشكل recursive
+        function findElementByXPathDeep(xpath, rootDoc) {
+            rootDoc = rootDoc || document;
+
+            let el = evaluateXPath(xpath, rootDoc);
+            if (el) return el;
+
+            const iframes = rootDoc.querySelectorAll('iframe');
+            for (const frame of iframes) {
+                try {
+                    const innerDoc = frame.contentDocument || frame.contentWindow?.document;
+                    if (!innerDoc) continue;
+
+                    el = evaluateXPath(xpath, innerDoc);
+                    if (el) return el;
+
+                    const nested = findElementByXPathDeep(xpath, innerDoc);
+                    if (nested) return nested;
+                } catch (e) {
+                    continue;
+                }
+            }
+
+            return null;
+        }
+
+        // ديف التنبيه بتاع العملة (بيتبني جوه نفس الدوكيومنت بتاع الزرار عشان يظهر صح جوه الـ iframe)
+        function showCurrencyWarning(ownerDoc, currencyCode, onDecision) {
+            // منع تكرار الديف لو فاتح قبل كده
+            const existing = ownerDoc.getElementById('sab-currency-warning-overlay');
+            if (existing) existing.remove();
+
+            const overlay = ownerDoc.createElement('div');
+            overlay.id = 'sab-currency-warning-overlay';
+            overlay.style.cssText = `
+                position:fixed; top:0; left:0; width:100%; height:100%;
+                background:rgba(0,0,0,0.5); z-index:999999;
+                display:flex; align-items:center; justify-content:center;
+                font-family:Arial;
+            `;
+
+            overlay.innerHTML = `
+                <div style="background:#fff; border-radius:10px; padding:20px; max-width:380px;
+                            width:90%; text-align:center; direction:rtl; box-shadow:0 4px 20px rgba(0,0,0,0.3);">
+                    <div style="font-size:32px; margin-bottom:10px;">⚠️</div>
+                    <h3 style="margin:0 0 10px 0; font-size:16px; color:#333;">
+                        العملة المختارة مش دولار
+                    </h3>
+                    <p style="font-size:13px; color:#555; margin-bottom:20px;">
+                        إنت مختار عملة <b>${currencyCode}</b> بدل الدولار (USD).
+                        <br>هل تحب تكمل بنفس العملة دي، ولا ترجع تغيّرها؟
+                    </p>
+                    <div style="display:flex; gap:10px;">
+                        <button id="sab-currency-cancel-btn"
+                            style="flex:1; padding:10px; border:1px solid #ccc; background:#f5f5f5;
+                                   border-radius:8px; cursor:pointer; font-size:13px;">
+                            رجوع لتغيير العملة
+                        </button>
+                        <button id="sab-currency-continue-btn"
+                            style="flex:1; padding:10px; border:none; background:#e11d1d; color:#fff;
+                                   border-radius:8px; cursor:pointer; font-size:13px;">
+                            متابعة
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            ownerDoc.body.appendChild(overlay);
+
+            ownerDoc.getElementById('sab-currency-continue-btn').addEventListener('click', () => {
+                overlay.remove();
+                onDecision(true);
+            });
+
+            ownerDoc.getElementById('sab-currency-cancel-btn').addEventListener('click', () => {
+                overlay.remove();
+                onDecision(false);
+            });
+        }
+
+        // XPath الخاص بزرار الـ Submit المطلوب مراقبته فقط
+        const submitBtnXPath = '/html/body/section/div[1]/div/div/div/form/div/div[1]/div[4]/div/div[3]/button[2]';
+        const submitBtn = findElementByXPathDeep(submitBtnXPath);
+
+        if (submitBtn) {
+            let bypassCurrencyCheck = false;
+
+            submitBtn.addEventListener('click', function (e) {
+                // لو ده كليك مبرمج بعد موافقة المستخدم، سيبه يكمل عادي من غير أي فحص
+                if (bypassCurrencyCheck) {
+                    bypassCurrencyCheck = false;
+                    return;
+                }
+
+                const ownerDoc = submitBtn.ownerDocument;
+                const currencySelect = ownerDoc.getElementById('currencyCODE');
+                const currencyVal = currencySelect ? currencySelect.value : '';
+
+                // لو العملة فاضية أو USD، سيب الكليك يكمل عادي (من غير تدخل)
+                if (!currencyVal || currencyVal === 'USD') {
+                    return;
+                }
+
+                // وقف الكليك الأصلي تمامًا لحد ما المستخدم يقرر
+                e.preventDefault();
+                e.stopPropagation();
+                e.stopImmediatePropagation();
+
+                showCurrencyWarning(ownerDoc, currencyVal, (userWantsToContinue) => {
+                    if (userWantsToContinue) {
+                        bypassCurrencyCheck = true;
+                        submitBtn.click(); // يعيد نفس الكليك، وهيتجاهل الفحص لأن bypassCurrencyCheck = true
+                    }
+                    // لو اختار "رجوع"، مفيش حاجة تحصل، الصفحة تفضل زي ما هي عشان يغير العملة
+                });
+            }, true); // true = capture phase، عشان نمسك الكليك قبل أي هاندلر تاني على نفس الزرار
+        }
+    };
+    
 
         
     buildSidebar();
