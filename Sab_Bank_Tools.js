@@ -112,7 +112,7 @@
                     border-radius: 12px 0 0 12px;
                     z-index: 9999999;
                     box-shadow: -4px 0 16px rgba(0,0,0,0.18);
-                    font-family: Arial, sans-serif;
+                    font-family: Cairo, Arial, sans-serif;
                     direction: rtl;
                     transition: right 0.3s ease;
                 }
