@@ -1,4 +1,4 @@
-// SAB EL AWL SMART PANEL - EDITED
+// SAB EL AWL SMART PANEL
 (function() {
     'use strict';
 
@@ -720,17 +720,30 @@
             return null;
         };
 
-        // حاول تستنى أي اسبينر/لودر معروف يختفي. السيلكتورات دي تخمين شائع،
-        // لو عندك سيلكتور حقيقي للاسبينر ابعتهولي عشان أظبطه بدقة أكتر.
-        const SAB_SPINNER_SELECTORS = ['.blockUI', '.loading-spinner', '.ws-loading', '.spinner', '.loader', '.ajax-loader'];
-        const sabWaitForSpinnerGone = async (timeout = 15000, interval = 200) => {
+        // دور على عنصر جوه دوكيومنت معين تحديدًا (مش هيدور جوه iframe تاني، لأننا أصلاً واخدين الدوكيومنت الصح)
+        const sabWaitForElementInDoc = async (doc, selector, timeout = 8000, interval = 200) => {
             const start = Date.now();
             while (Date.now() - start < timeout) {
+                const el = doc.querySelector(selector);
+                if (el) return el;
+                await sabSleep(interval);
+            }
+            return null;
+        };
+
+        // الاسبينر الحقيقي بتاع النظام: صورة gif اسمها loading-....gif
+        const isSabSpinnerVisible = (doc) => {
+            const imgs = Array.from(doc.querySelectorAll('img[src*="loading-"]'));
+            return imgs.some((img) => img.offsetParent !== null);
+        };
+
+        const sabWaitForSpinnerGone = async (timeout = 15000, interval = 200) => {
+            const start = Date.now();
+            // أول حاجة نستنى شوية عشان الاسبينر يظهر أصلاً قبل ما ندور على اختفائه
+            await sabSleep(300);
+            while (Date.now() - start < timeout) {
                 const doc = getIframeDoc() || document;
-                const visibleSpinner = SAB_SPINNER_SELECTORS
-                    .map((s) => doc.querySelector(s))
-                    .find((el) => el && el.offsetParent !== null);
-                if (!visibleSpinner) return true;
+                if (!isSabSpinnerVisible(doc) && !isSabSpinnerVisible(document)) return true;
                 await sabSleep(interval);
             }
             return false; // خلص الوقت ومكانش فيه ضمان إن الاسبينر اختفى
@@ -766,24 +779,79 @@
             return true;
         };
 
-        // تعبئة حقل تاريخ (input عادي بس بتصميم مخصص) وتشغيل الأحداث بتاعته
-        const setDateValue = (el, value) => {
-            if (!el) return false;
-            const proto = Object.getPrototypeOf(el);
-            const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
-            if (setter) setter.call(el, value); else el.value = value;
-            el.dispatchEvent(new Event('input', { bubbles: true }));
-            el.dispatchEvent(new Event('change', { bubbles: true }));
-            el.dispatchEvent(new Event('blur', { bubbles: true }));
-            return true;
-        };
+        // ----------------------------------------------------------------
+        // التعامل مع widget التقويم (ws-date) بشكل حقيقي:
+        // الحقل الظاهر readonly ومحتاج نفتح البوب أب ونضغط على اليوم المطلوب فعليًا
+        // ----------------------------------------------------------------
+        const setWsDate = async (doc, fieldClass, targetDate) => {
+            // 1) الحقل الظاهر (النصي، readonly) بتاع الفيلد ده
+            const visibleInput = Array.from(doc.querySelectorAll(`input.${fieldClass}[type="text"]`))
+                .find((el) => el.offsetParent !== null);
+            if (!visibleInput) {
+                console.warn(`❌ متلاقيتش حقل التاريخ الظاهر (${fieldClass})`);
+                return false;
+            }
 
-        // تنسيق تاريخ لصيغة DD/MM/YYYY - عدّل الصيغة هنا لو النظام بيستخدم صيغة مختلفة
-        const formatDateDMY = (date) => {
-            const dd = String(date.getDate()).padStart(2, '0');
-            const mm = String(date.getMonth() + 1).padStart(2, '0');
-            const yyyy = date.getFullYear();
-            return `${dd}/${mm}/${yyyy}`;
+            // 2) زرار فتح البوب أب (جنب الحقل مباشرة)
+            const wrapper = visibleInput.parentElement;
+            const opener = wrapper?.querySelector('.ws-popover-opener');
+            if (!opener) {
+                console.warn(`❌ متلاقيتش زرار فتح التقويم (${fieldClass})`);
+                return false;
+            }
+
+            opener.click();
+
+            // 3) استنى البوب أب يظهر
+            const popover = await sabWaitForElementInDoc(doc, '.ws-popover.date-popover.ws-po-visible', 5000);
+            if (!popover) {
+                console.warn(`❌ متفتحش البوب أب بتاع التاريخ (${fieldClass})`);
+                return false;
+            }
+
+            await sabSleep(200);
+
+            const pad2 = (n) => String(n).padStart(2, '0');
+            const targetValue = `${targetDate.getFullYear()}-${pad2(targetDate.getMonth() + 1)}-${pad2(targetDate.getDate())}`;
+            const targetYearMonth = `${targetDate.getFullYear()}-${pad2(targetDate.getMonth() + 1)}`;
+
+            // 4) دور على زرار اليوم المطلوب، ولو مش موجود (شهر مختلف) نتنقل بالـ prev/next
+            let dayBtn = popover.querySelector(`button[data-action="changeInput"][value="${targetValue}"]:not(.othermonth)`);
+
+            let safety = 0;
+            while (!dayBtn && safety < 14) {
+                const monthSelect = popover.querySelector('select.month-select');
+                const currentMonthVal = monthSelect?.value; // زي "2026-07"
+
+                if (!currentMonthVal) break;
+
+                const [cy, cm] = currentMonthVal.split('-').map(Number);
+                const [ty, tm] = targetYearMonth.split('-').map(Number);
+                const diff = (ty * 12 + tm) - (cy * 12 + cm);
+
+                if (diff < 0) {
+                    const prevBtn = popover.querySelector('.ws-prev');
+                    if (prevBtn && !prevBtn.disabled) prevBtn.click(); else break;
+                } else if (diff > 0) {
+                    const nextBtn = popover.querySelector('.ws-next');
+                    if (nextBtn && !nextBtn.disabled) nextBtn.click(); else break;
+                } else {
+                    break; // نفس الشهر بس اليوم مش موجود (نادر) - نوقف بدل ما ندخل لوب لا نهائي
+                }
+
+                await sabSleep(300);
+                dayBtn = popover.querySelector(`button[data-action="changeInput"][value="${targetValue}"]:not(.othermonth)`);
+                safety++;
+            }
+
+            if (!dayBtn) {
+                console.warn(`❌ متلاقيتش زرار اليوم المطلوب (${targetValue}) في التقويم (${fieldClass})`);
+                return false;
+            }
+
+            dayBtn.click();
+            await sabSleep(200);
+            return true;
         };
 
         // نافذة إدخال التاريخ (من / الى) قبل بدء التحميل
@@ -792,8 +860,11 @@
             const threeDaysAgo = new Date();
             threeDaysAgo.setDate(today.getDate() - 3);
 
-            const defaultFrom = formatDateDMY(threeDaysAgo);
-            const defaultTo = formatDateDMY(today);
+            const pad2 = (n) => String(n).padStart(2, '0');
+            const toInputFormat = (d) => `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${d.getFullYear()}`;
+
+            const defaultFrom = toInputFormat(threeDaysAgo);
+            const defaultTo = toInputFormat(today);
 
             const existing = document.getElementById('sab-statement-modal-overlay');
             if (existing) existing.remove();
@@ -815,14 +886,14 @@
                     </h3>
 
                     <div style="margin-bottom:10px;">
-                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">من</label>
+                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">من (dd/mm/yyyy)</label>
                         <input id="sab-stmt-from" type="text" value="${defaultFrom}"
                             style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;
                                    font-size:13px; direction:ltr; box-sizing:border-box;">
                     </div>
 
                     <div style="margin-bottom:15px;">
-                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">الى</label>
+                        <label style="font-size:12px; color:#555; display:block; margin-bottom:4px;">الى (dd/mm/yyyy)</label>
                         <input id="sab-stmt-to" type="text" value="${defaultTo}"
                             style="width:100%; padding:8px; border:1px solid #ddd; border-radius:6px;
                                    font-size:13px; direction:ltr; box-sizing:border-box;">
@@ -848,24 +919,30 @@
             document.getElementById('sab-stmt-cancel-btn').addEventListener('click', () => overlay.remove());
 
             document.getElementById('sab-stmt-ok-btn').addEventListener('click', () => {
-                const fromVal = document.getElementById('sab-stmt-from').value.trim();
-                const toVal = document.getElementById('sab-stmt-to').value.trim();
+                // بنحول النص dd/mm/yyyy لكائن Date حقيقي عشان نستخدمه في التقويم
+                const parseDMY = (str) => {
+                    const [dd, mm, yyyy] = str.split('/').map(Number);
+                    return new Date(yyyy, mm - 1, dd);
+                };
+
+                const fromDateObj = parseDMY(document.getElementById('sab-stmt-from').value.trim());
+                const toDateObj = parseDMY(document.getElementById('sab-stmt-to').value.trim());
                 overlay.remove();
-                onConfirm(fromVal, toVal);
+                onConfirm(fromDateObj, toDateObj);
             });
         };
 
         // الخطوات الفعلية لتحميل كشف الحساب (async عشان نقدر نستنى بين كل خطوة)
-        const runDownloadStatement = async (fromDate, toDate, btn) => {
+        const runDownloadStatement = async (fromDateObj, toDateObj, btn) => {
             try {
                 console.log('▶️ [1] بدء العملية - الريفريش الأول');
                 const refreshBtn = getEl('#appwrapper > header > a');
                 if (!refreshBtn) { console.warn('❌ متلاقيش زرار الريفريش'); return; }
                 refreshBtn.click();
 
-                console.log('⏳ [1] مستني الصفحة تحمل بعد الريفريش...');
+                console.log('⏳ [1] مستني الاسبينر يختفي بعد الريفريش...');
                 await sabWaitForSpinnerGone(15000);
-                await sabSleep(1500); // هامش أمان إضافي
+                await sabSleep(1000); // هامش أمان إضافي
                 console.log('✅ [1] الريفريش خلص');
 
                 console.log('▶️ [2] مستني ظهور #w-accounts');
@@ -874,46 +951,38 @@
                 wAccounts.click();
                 console.log('✅ [2] تم الضغط على w-accounts');
 
-                await sabSleep(1000);
+                await sabSleep(800);
 
-                console.log('▶️ [3] الضغط على عنصر المنيو (li:nth-child(9))');
-                const menuItem = await sabWaitForElement(
-                    '#appwrapper > div.bodywrapper > div.contentwrap > aside > nav > ul > li:nth-child(9) > a',
-                    15000
-                );
-                if (!menuItem) { console.warn('❌ متلاقيتش عنصر المنيو رقم 9'); return; }
-                menuItem.click();
-                console.log('✅ [3] تم الضغط على المنيو - الدروب داون المفروض ظهر');
-
-                console.log('▶️ [4] مستني ظهور request_menu new_blink');
+                // اختصار الوقت: نضغط على request_menu مباشرة من غير ما نفتح المنيو الجانبي الأول
+                console.log('▶️ [3] مستني ظهور request_menu new_blink (اختصارًا للوقت)');
                 const requestMenuItem = await sabWaitForElement('#request_menu > li.new_blink > a', 10000);
                 if (!requestMenuItem) { console.warn('❌ متلاقيتش #request_menu > li.new_blink > a'); return; }
                 requestMenuItem.click();
-                console.log('✅ [4] تم الضغط - مستني تحميل الفورم');
+                console.log('✅ [3] تم الضغط - مستني تحميل الفورم');
 
                 await sabSleep(1500);
 
-                console.log('▶️ [5] مستني ظهور select نوع المستند (productType)');
+                console.log('▶️ [4] مستني ظهور select نوع المستند (productType)');
                 const productTypeEl = await sabWaitForElement('#productType', 15000);
                 if (!productTypeEl) { console.warn('❌ متلاقيتش #productType'); return; }
 
                 const doc = productTypeEl.ownerDocument;
                 selectChosenOption(doc, 'productType', '3'); // Account Statement
-                console.log('✅ [5] تم اختيار Account Statement - مستني الفورم يحمل الحقول');
+                console.log('✅ [4] تم اختيار Account Statement - مستني الفورم يحمل الحقول');
 
                 await sabSleep(1500);
 
-                console.log('▶️ [6] مستني ظهور select الشركة (corporate)');
+                console.log('▶️ [5] مستني ظهور select الشركة (corporate)');
                 const corporateEl = await sabWaitForElement('#corporate', 15000);
                 if (!corporateEl) { console.warn('❌ متلاقيتش #corporate'); return; }
 
                 const gotCorporate = selectSingleChosenOption(doc, 'corporate');
                 if (!gotCorporate) { console.warn('❌ متلاقيتش خيار متاح جوه corporate'); return; }
-                console.log('✅ [6] تم اختيار الشركة - مستني الحسابات تحمل');
+                console.log('✅ [5] تم اختيار الشركة - مستني الحسابات تحمل');
 
                 await sabSleep(1800);
 
-                console.log('▶️ [7] مستني ظهور خيارات الحساب (account) وفيها SAR');
+                console.log('▶️ [6] مستني ظهور خيارات الحساب (account) وفيها SAR');
                 let accountFound = false;
                 const accountWaitStart = Date.now();
                 while (Date.now() - accountWaitStart < 15000) {
@@ -927,22 +996,21 @@
                 if (!accountFound) { console.warn('❌ متلاقيتش حساب فيه SAR'); return; }
 
                 selectChosenMultiByText(doc, 'account', 'SAR');
-                console.log('✅ [7] تم اختيار الحساب اللي فيه SAR');
+                console.log('✅ [6] تم اختيار الحساب اللي فيه SAR');
 
                 await sabSleep(800);
 
-                console.log('▶️ [8] تعبئة التاريخ من والى');
-                const startDateEl = doc.querySelector('input.startdate') || getEl('input.startdate');
-                const endDateEl = doc.querySelector('input.enddate') || getEl('input.enddate');
+                console.log('▶️ [7] فتح تقويم "من" واختيار التاريخ');
+                const startOk = await setWsDate(doc, 'startdate', fromDateObj);
+                if (!startOk) { console.warn('❌ فشل ضبط تاريخ "من"'); return; }
+                console.log('✅ [7] تم ضبط تاريخ "من"');
 
-                if (!startDateEl || !endDateEl) {
-                    console.warn('❌ متلاقيتش حقول التاريخ (startdate / enddate)');
-                    return;
-                }
+                await sabSleep(500);
 
-                setDateValue(startDateEl, fromDate);
-                setDateValue(endDateEl, toDate);
-                console.log(`✅ [8] تم تعبئة التاريخ: من ${fromDate} الى ${toDate}`);
+                console.log('▶️ [8] فتح تقويم "الى" واختيار التاريخ');
+                const endOk = await setWsDate(doc, 'enddate', toDateObj);
+                if (!endOk) { console.warn('❌ فشل ضبط تاريخ "الى"'); return; }
+                console.log('✅ [8] تم ضبط تاريخ "الى"');
 
                 await sabSleep(800);
 
@@ -960,8 +1028,8 @@
         };
 
         addBtn('تحميل كشف حساب', '📄', (btn) => {
-            showStatementDateModal((fromDate, toDate) => {
-                runDownloadStatement(fromDate, toDate, btn);
+            showStatementDateModal((fromDateObj, toDateObj) => {
+                runDownloadStatement(fromDateObj, toDateObj, btn);
             });
         });
     };
